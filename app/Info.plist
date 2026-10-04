@@ -8,6 +8,8 @@
 	<string>ClaudePosture</string>
 	<key>CFBundleIdentifier</key>
 	<string>com.ngenart.claudeposture</string>
+	<key>CFBundleIconFile</key>
+	<string>Noodle</string>
 	<key>CFBundleInfoDictionaryVersion</key>
 	<string>6.0</string>
 	<key>CFBundleName</key>
