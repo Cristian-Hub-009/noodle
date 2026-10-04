@@ -15,11 +15,14 @@
        steps, tip                        beginner walkthrough for "How to" (array of strings, string)
        expand                            bool, open "How to" right away
        snoozeMinutes                     for "See you in 10 min"
+       nudgeAfter?                       seconds before the peek, 20 unless filming
        layout: { t, r, b, l,             transparent margin on each side of the card, in pt
                  edge, anchor }          "right" | "left" screen edge, "top" | "bottom" edge that stays put
        entrance                          "slide" (default), "fade" (Reduce motion), or "hold" (the noodle
                                          drop is running, wait for enter("bloom"))
        noodle                            number, the inset: the card hangs from a noodle
+       announce                          bool, open with "It's time to stretch!" (Toni waving, then the
+                                         exercise is revealed). Fresh cards only, skipped with Reduce motion.
      }
   window.showWelcome(payload)            The first-launch intro, same layout and entrance fields.
   window.enter(style)                    Plays a held entrance, "bloom" grows the card out of the figure tile.
@@ -206,6 +209,26 @@
   .setup li svg { flex: none; width: 18px; height: 18px; margin-top: -1px; }
   .setup li b { font-weight: 650; }
 
+  /* The announcement: for a beat the card says "It's time to stretch!" over the exercise, then reveals it.
+     Only when the payload asks for it (announce), and never with Reduce motion. */
+  .announce {
+    position: absolute; left: 0; top: 0; right: 0; height: 132px; z-index: 3; display: none;
+    gap: 14px; padding: 14px; background: var(--bg); cursor: default;
+  }
+  .card.announcing .announce { display: flex; }
+  .afig {
+    flex: none; width: 104px; height: 104px; border-radius: 12px; background: var(--tile);
+    color: var(--fg); display: grid; place-items: center;
+  }
+  .afig svg { width: 90px; height: 90px; display: block; overflow: visible; transform-origin: 50% 90%; }
+  .atext { flex: 1; min-width: 0; display: flex; flex-direction: column; justify-content: center; }
+  .aw { display: inline-block; white-space: pre; opacity: 0; }
+  .aline { font-size: 15px; line-height: 19px; font-weight: 700; letter-spacing: -0.01em; }
+  .abig { position: relative; margin-top: 1px; font-size: 32px; line-height: 34px; font-weight: 800; letter-spacing: -0.035em; color: var(--accent); white-space: nowrap; }
+  .abig svg { position: absolute; left: 1px; bottom: -5px; width: 118px; height: 8px; overflow: visible; }
+  .abig svg path { fill: none; stroke: var(--bar); stroke-width: 2.4; stroke-linecap: round; stroke-dasharray: 130; stroke-dashoffset: 130; }
+  .asub { margin-top: 9px; color: var(--muted); opacity: 0; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
+
   /* The noodle entrance: the card hangs from a strand that runs up under the menu bar. */
   .noodle { position: absolute; left: 58px; z-index: 0; display: none; overflow: visible; transform-origin: 8px 0; animation: sway 2.8s ease-in-out infinite; }
   @keyframes sway { 0%, 100% { transform: rotate(-2deg); } 50% { transform: rotate(2deg); } }
@@ -288,6 +311,14 @@
           <div class="safety">Keep it gentle. Stop if anything hurts, tingles, or feels sharp.</div>
         </section>
       </div>
+      <div class="announce" id="announce" aria-hidden="true">
+        <div class="afig" id="aFig"></div>
+        <div class="atext">
+          <div class="aline"><span class="aw">It's</span> <span class="aw">time</span> <span class="aw">to</span></div>
+          <div class="abig"><span class="aw" id="aBig">stretch!</span><svg viewBox="0 0 118 8" aria-hidden="true"><path id="aUnder" d="M2 4 Q11 -1 20 4 T38 4 T56 4 T74 4 T92 4 T110 4"/></svg></div>
+          <div class="asub" id="aSub"></div>
+        </div>
+      </div>
       <div class="progress" id="progress"><div id="bar"></div></div>
     </div>
     <div class="peek front" id="peekFront" aria-hidden="true"></div>
@@ -363,7 +394,6 @@
   let celebrating = null, waving = null;
   let clock = null, endsAt = 0;
   let nudgeTimer = null, nudged = false, interacted = false, hovering = false;
-  const NUDGE_AFTER = 20000;
 
   function applyLayout(lay) {
     if (!lay) return;
@@ -466,7 +496,7 @@
     await settled;
     if (my !== flow) return;
     phase = "in";
-    armNudge();
+    if (card.classList.contains("announcing")) runAnnounce(my); else armNudge();
   };
 
   window.leave = async function (reason) {
@@ -560,7 +590,7 @@
     if (mode !== "card" || nudged || !ex.peek) return;
     nudgeTimer = setTimeout(() => {
       if (phase === "in" && ex.state === "ready" && !hovering && !interacted) peek();
-    }, NUDGE_AFTER);
+    }, (ex.nudgeAfter || 20) * 1000);
   }
 
   async function peek() {
@@ -611,6 +641,55 @@
     front.innerHTML = (markup || "").replace(/id="([^"]+)"/g, 'id="$1-f"').replace(/url\(#([^)]+)\)/g, "url(#$1-f)");
   }
 
+  // ---- The announcement: "It's time to stretch!" before the exercise, when the payload asks for it ----
+  const ANNOUNCE_MS = 2300;   // from the card landing to the reveal
+  let revealing = false;
+
+  function prepAnnounce(p) {
+    const on = !!p.announce && phase === "out" && !reduced();   // a fresh card only, not a swap
+    card.classList.toggle("announcing", on);
+    if (!on) return;
+    $("aFig").innerHTML = p.waveSVG || p.figureSVG || "";
+    $("aSub").textContent = p.subtitle || "Claude's on it. Good time for a quick one.";
+    card.querySelectorAll(".aw, .asub").forEach((el) => set(el, { opacity: 0 }, "a"));
+    // The exercise waits underneath, hidden until the reveal.
+    [$("fig"), card.querySelector(".body")].forEach((el) => set(el, { opacity: 0 }, "r"));
+  }
+
+  async function runAnnounce(my) {
+    const small = [...card.querySelectorAll(".aline .aw")], big = $("aBig"), svg = $("aFig").querySelector("svg");
+    if (svg) anim(svg, [
+      { transform: "none", easing: "ease-out" },
+      { transform: "translateY(1px) scale(1.07, .9)", offset: 0.16, easing: "cubic-bezier(.2, .9, .3, 1)" },
+      { transform: "translateY(-12px) scale(.95, 1.06)", offset: 0.48, easing: "cubic-bezier(.6, 0, .9, .4)" },
+      { transform: "translateY(0) scale(1.06, .93)", offset: 0.76, easing: "ease-out" },
+      { transform: "none" }], { ease: "linear", dur: 0.62 }, { key: "t", delay: 0.04 });
+    const pop = (el, delay, from) => anim(el, [{ opacity: 0, transform: from }, { opacity: 1, transform: "none" }], M.pop, { key: "a", delay });
+    small.forEach((w, i) => pop(w, 0.1 + i * 0.09, "translateY(8px) scale(.92)"));
+    pop(big, 0.42, "translateY(10px) scale(.7)");
+    anim($("aUnder"), [{ strokeDashoffset: 130 }, { strokeDashoffset: 0 }], { ease: "cubic-bezier(.5, 0, .2, 1)", dur: 0.45 }, { key: "u", delay: 0.75 });
+    pop($("aSub"), 0.9, "translateY(5px)");
+    await wait(ANNOUNCE_MS);
+    if (my !== flow) return;
+    endAnnounce();
+  }
+
+  // The banner fades while the exercise pops in underneath it. A click on the banner skips ahead.
+  async function endAnnounce() {
+    if (!card.classList.contains("announcing") || revealing) return;
+    revealing = true;
+    const my = flow;
+    [$("fig"), card.querySelector(".body")].forEach((el, i) =>
+      anim(el, [{ opacity: 0, transform: "translateY(6px)" }, { opacity: 1, transform: "none" }], M.pop, { key: "r", delay: 0.05 + i * 0.06 }));
+    await anim($("announce"), [{ opacity: 1 }, { opacity: 0 }], M.fade, { key: "o", dur: 0.22 });
+    revealing = false;
+    if (my !== flow) return;
+    card.classList.remove("announcing");
+    stopAnim($("announce"), "o");
+    armNudge();
+  }
+  $("announce").addEventListener("click", () => endAnnounce());
+
   // ---- Exercise card ----
   const CHECK = '<svg viewBox="0 0 18 18" aria-hidden="true"><circle cx="9" cy="9" r="9" fill="var(--ok)"/><path class="tick" d="M5.2 9.3 L7.8 11.8 L12.8 6.6" fill="none" stroke="var(--bg)" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" stroke-dasharray="11" stroke-dashoffset="11"/></svg>';
   const CLOCK = '<svg viewBox="0 0 18 18" aria-hidden="true"><circle cx="9" cy="9" r="9" fill="var(--tile)"/><path d="M9 5.2 V9.2 L11.6 10.8" fill="none" stroke="var(--accent)" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></svg>';
@@ -637,7 +716,7 @@
     celebrating = waving = null;
     nudged = interacted = hovering = false;
     ex = { state: "ready", duration: p.durationSeconds || 0, doneToday: p.doneToday || 0,
-           snooze: p.snoozeMinutes || 10, wave: p.waveSVG || "", peek: false };
+           snooze: p.snoozeMinutes || 10, wave: p.waveSVG || "", peek: false, nudgeAfter: p.nudgeAfter };
     card.classList.remove("stopped", "welcome", "setup-open", "pick-open", "running", "finished", "open");
     $("name").textContent = p.name || "";
     $("instruction").textContent = p.instruction || "";
@@ -667,6 +746,7 @@
     if (open) $("howtoLabel").textContent = "Hide steps";
     setFigure(p);
     setPeek(p.peekSVG);
+    prepAnnounce(p);
   }
 
   window.showCard = (p) => show(() => fillExercise(p), p);
@@ -886,7 +966,7 @@
     clearCard();
     stopClock();
     clearTimeout(nudgeTimer);
-    card.classList.remove("stopped", "open", "running", "finished");
+    card.classList.remove("stopped", "open", "running", "finished", "announcing");
     card.classList.add("welcome");
     focus = ["neck", "hips", "all"].includes(p.focus) ? p.focus : "all";
     who = { name: p.name || "Toni", fullName: p.fullName || "Toni the Rigatoni" };
@@ -945,10 +1025,10 @@
     document.body.classList.add("demo");
     const bar = document.createElement("div");
     bar.className = "demo-bar";
-    bar.innerHTML = ["Next", "Replay", "Nudge", "Claude's done", "Ignore", "Noodle drop", "Left edge", "Light / dark", "Reduce motion", "Next noodle", "Intro"]
+    bar.innerHTML = ["Next", "Replay", "Announce", "Nudge", "Claude's done", "Ignore", "Noodle drop", "Left edge", "Light / dark", "Reduce motion", "Next noodle", "Intro"]
       .map((t) => `<button>${t}</button>`).join("");
     document.body.appendChild(bar);
-    let list = [], i = 0, character = "rigatoni", edge = "right", entrance = "slide", done = 2, again = false;
+    let list = [], i = 0, character = "rigatoni", edge = "right", entrance = "slide", done = 2, again = false, announce = false;
     const text = (url) => fetch(url).then((r) => r.ok ? r.text() : "").catch(() => "");
     const art = (file) => character === "sprout" ? `figures/${file}` : `figures/${character}/${file}`;
     const layout = () => ({ t: 24, r: 24, b: 24, l: 24, edge, anchor: "top" });
@@ -959,7 +1039,7 @@
       window.showCard(Object.assign({}, e, {
         figureSVG, waveSVG, peekSVG, index: i + 1, total: list.length, doneToday: done, snoozeMinutes: 10,
         subtitle: "Claude's on it. Good time for a quick one.", layout: layout(),
-        entrance: noodle ? "hold" : "slide", noodle: noodle ? 16 : undefined,
+        entrance: noodle ? "hold" : "slide", noodle: noodle ? 16 : undefined, announce,
       }));
       if (noodle) setTimeout(() => window.enter("bloom"), 60);
     }
@@ -977,6 +1057,7 @@
       const t = e.target.textContent;
       if (t === "Next") { if (phase !== "out") { window.leave("closed"); } else { i = (i + 1) % list.length; demoShow(); } }
       if (t === "Replay") { if (phase === "out") demoShow(); else { again = true; window.leave("closed"); } }
+      if (t === "Announce") { announce = !announce; e.target.style.fontWeight = announce ? 700 : ""; if (phase === "out") demoShow(); else { again = true; window.leave("closed"); } }
       if (t === "Nudge") { nudged = false; interacted = false; peek(); }
       if (t === "Claude's done") window.setSubtitle();
       if (t === "Ignore") window.leave("ignored");

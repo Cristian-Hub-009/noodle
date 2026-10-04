@@ -5,6 +5,13 @@ import WebKit
 final class CardPanel: NSPanel {
     override var canBecomeKey: Bool { false }
     override var canBecomeMain: Bool { false }
+
+    /// Every Space, full-screen ones included. `on` also lifts it above other floating windows.
+    func floatOverFullScreen(_ on: Bool) {
+        level = on ? .statusBar : .floating
+        collectionBehavior = on ? [.canJoinAllSpaces, .fullScreenAuxiliary, .ignoresCycle]
+                                : [.canJoinAllSpaces, .fullScreenAuxiliary, .stationary, .ignoresCycle]
+    }
 }
 
 /// Lets the first click land on a button even though the panel is never key or active.
@@ -25,6 +32,16 @@ final class CardWebView: WKWebView {
     }
 }
 
+extension WKWebView {
+    /// WebKit treats a window it thinks is covered up as hidden: nothing draws and the page gets
+    /// suspended. These transparent panels read as covered even while they sit on top, so cards came
+    /// up blank once the page had gone idle. On screen means visible.
+    func ignoreWindowOcclusion() {
+        guard responds(to: Selector(("_setWindowOcclusionDetectionEnabled:"))) else { return }
+        setValue(false, forKey: "windowOcclusionDetectionEnabled")
+    }
+}
+
 /// Hosts card.html. Swift -> JS via window.showCard / showWelcome / enter / leave / setSubtitle,
 /// JS -> Swift via webkit.messageHandlers.posture.postMessage({action}). See card.html for the contract.
 ///
@@ -40,6 +57,7 @@ final class CardController: NSObject, WKScriptMessageHandler, WKNavigationDelega
 
     private let panel: CardPanel
     private let webView: CardWebView
+    private let resources: URL
     private var ready = false
     private var queued: (() -> Void)?
     private var baseCard = CGSize(width: 340, height: 132)   // overridden by window.CARD in card.html
@@ -52,10 +70,12 @@ final class CardController: NSObject, WKScriptMessageHandler, WKNavigationDelega
     private static let dropSeconds = 0.95
 
     init(resources: URL) {
+        self.resources = resources
         dropper = Dropper(resources: resources)
         let cfg = WKWebViewConfiguration()
         webView = CardWebView(frame: .zero, configuration: cfg)
         webView.setValue(false, forKey: "drawsBackground")
+        webView.ignoreWindowOcclusion()
         panel = CardPanel(contentRect: NSRect(x: 0, y: 0, width: 388, height: 180),
                           styleMask: [.borderless, .nonactivatingPanel], backing: .buffered, defer: false)
         super.init()
@@ -63,8 +83,7 @@ final class CardController: NSObject, WKScriptMessageHandler, WKNavigationDelega
         panel.isOpaque = false
         panel.backgroundColor = .clear
         panel.hasShadow = false
-        panel.level = .floating
-        panel.collectionBehavior = [.canJoinAllSpaces, .fullScreenAuxiliary, .stationary, .ignoresCycle]
+        panel.floatOverFullScreen(false)
         panel.hidesOnDeactivate = false
         panel.isReleasedWhenClosed = false
         panel.becomesKeyOnlyIfNeeded = true
@@ -113,6 +132,12 @@ final class CardController: NSObject, WKScriptMessageHandler, WKNavigationDelega
             if let svg = drop { self.dropIn(svg: svg, frame: l.frame, inset: inset, tileFromTop: tileFromTop) }
         }
         if ready { run() } else { queued = run }
+    }
+
+    /// For filming over a full-screen app: lifts the card above everything, menu bar level included.
+    func floatOverFullScreen(_ on: Bool) {
+        panel.floatOverFullScreen(on)
+        dropper.floatOverFullScreen(on)
     }
 
     func setSubtitle(_ text: String) {
@@ -204,6 +229,13 @@ final class CardController: NSObject, WKScriptMessageHandler, WKNavigationDelega
             self.queued?()
             self.queued = nil
         }
+    }
+
+    /// macOS can kill the page under memory pressure. Load it again so the next card has somewhere to go.
+    func webViewWebContentProcessDidTerminate(_ webView: WKWebView) {
+        debug("card page was killed, reloading")
+        ready = false
+        webView.loadFileURL(resources.appendingPathComponent("card.html"), allowingReadAccessTo: resources)
     }
 
     func userContentController(_ ucc: WKUserContentController, didReceive message: WKScriptMessage) {

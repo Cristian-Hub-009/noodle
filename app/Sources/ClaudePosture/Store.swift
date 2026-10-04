@@ -51,6 +51,7 @@ struct Config: Codable {
     var character = "rigatoni"          // rigatoni, spaghetti, penne, lasagna, or sprout (see Cast)
     var expandSteps = false             // open "How to" on every card, for when the moves are new
     var entrance = "card"               // card (slides in from the screen edge) or noodle (rides a strand down from the menu bar)
+    var announce = false                // open each card with "It's time to stretch!" before the exercise
     var holdDuringCalls = true          // no cards while any app is using the mic or camera
     var holdDuringCalendarEvents = false // no cards during busy calendar events (asks for calendar access)
     var focus = Focus.all.rawValue      // neck, hips, all, or "custom" once exercises are picked by hand
@@ -69,6 +70,7 @@ struct Config: Codable {
         character = try c.decodeIfPresent(String.self, forKey: .character) ?? d.character
         expandSteps = try c.decodeIfPresent(Bool.self, forKey: .expandSteps) ?? d.expandSteps
         entrance = try c.decodeIfPresent(String.self, forKey: .entrance) ?? d.entrance
+        announce = try c.decodeIfPresent(Bool.self, forKey: .announce) ?? d.announce
         holdDuringCalls = try c.decodeIfPresent(Bool.self, forKey: .holdDuringCalls) ?? d.holdDuringCalls
         holdDuringCalendarEvents = try c.decodeIfPresent(Bool.self, forKey: .holdDuringCalendarEvents) ?? d.holdDuringCalendarEvents
         focus = try c.decodeIfPresent(String.self, forKey: .focus) ?? d.focus

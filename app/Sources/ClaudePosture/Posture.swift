@@ -19,6 +19,8 @@ final class Posture {
     private var delayTask: Task<Void, Never>?
     private var dismissTask: Task<Void, Never>?
     private var current: Exercise?
+    private var setSeconds: Double = 0          // how long Start runs, shorter when filming
+    private var filming = false                 // a card for the camera: no log, no cooldown, no rotation
     private var stopped = false
     private var started = false
     private var welcomeShowing = false
@@ -134,22 +136,29 @@ final class Posture {
         s.lastShown = now
         s.nextAllowed = now.addingTimeInterval(c.cooldownMinutes * 60)
         store.save(s)
+        present(ex, index: i + 1, total: list.count, subtitle: subtitle)
+    }
 
+    private func present(_ ex: Exercise, index: Int, total: Int, subtitle: String, film: FilmOptions? = nil) {
+        let c = store.config()
         current = ex
+        filming = film != nil
+        setSeconds = film?.timer ?? ex.durationSeconds
         stopped = false
         started = false
         hovering = false
         var payload: [String: Any] = [
             "id": ex.id, "name": ex.name, "instruction": ex.instruction, "spec": ex.spec,
-            "durationSeconds": ex.durationSeconds, "figure": ex.figure, "subtitle": subtitle,
-            "index": i + 1, "total": list.count, "doneToday": store.doneToday(),
+            "durationSeconds": setSeconds, "figure": ex.figure, "subtitle": subtitle,
+            "index": index, "total": total, "doneToday": store.doneToday(),
             "steps": ex.steps ?? [], "tip": ex.tip ?? "", "expand": c.expandSteps,
-            "snoozeMinutes": c.snoozeMinutes,
+            "snoozeMinutes": c.snoozeMinutes, "announce": c.announce || (film?.announce ?? false),
         ]
+        if let n = film?.peekAfter { payload["nudgeAfter"] = n }
         if let svg = figureSVG(ex.figure, character: c.character) { payload["figureSVG"] = svg }
         if let svg = figureSVG("figures/wave.svg", character: c.character) { payload["waveSVG"] = svg }
         if let svg = figureSVG("figures/peek.svg", character: c.character) { payload["peekSVG"] = svg }
-        debug("show \(ex.id) (\(i + 1) of \(list.count))")
+        debug("show \(ex.id) (\(index) of \(total))\(filming ? ", filming" : "")")
         card.show(payload: payload, position: c.position, inset: CGFloat(c.inset), dropSVG: dropSVG(c))
         armDismiss(after: c.expandSteps ? Self.readingSeconds : Self.waitSeconds)
     }
@@ -235,10 +244,10 @@ final class Posture {
     /// Start pressed: the page runs the timer and reports done itself. This only catches a page
     /// that never does.
     private func startSet() {
-        guard let ex = current, !started else { return }
+        guard current != nil, !started else { return }
         started = true
-        debug("set started, \(Int(ex.durationSeconds))s")
-        armDismiss(after: ex.durationSeconds + Self.setGraceSeconds, outcome: "done")
+        debug("set started, \(Int(setSeconds))s")
+        armDismiss(after: setSeconds + Self.setGraceSeconds, outcome: "done")
     }
 
     /// Opening "How to" means someone is reading, so give them a fresh window before auto dismiss.
@@ -256,6 +265,12 @@ final class Posture {
         dismissTask?.cancel()
         dismissTask = nil
         dismissDeadline = nil
+        if filming {
+            filming = false
+            debug("film card \(ex.id) \(outcome), not logged")
+            card.hide(reason: outcome)
+            return
+        }
         store.log(exercise: ex.id, outcome: outcome)
         if outcome == "snoozed" {
             var s = store.state()
@@ -265,6 +280,42 @@ final class Posture {
         }
         card.hide(reason: outcome)
         onChange?()
+    }
+
+    // MARK: Filming
+
+    struct FilmOptions {
+        var peekAfter: Double?   // seconds before Toni peeks, instead of 20
+        var timer: Double?       // seconds Start runs, instead of the exercise's own
+        var announce = false     // open with "It's time to stretch!" even when the setting is off
+    }
+
+    /// Shows a specific stretch for the camera. Leaves the rotation, cooldown, and log alone.
+    func film(_ id: String, _ options: FilmOptions) {
+        guard let ex = store.exercises.first(where: { $0.id == id }) else { return }
+        let index = (store.exercises.firstIndex { $0.id == id } ?? 0) + 1
+        afterClearing { [weak self] in
+            guard let self else { return }
+            self.present(ex, index: index, total: self.store.exercises.count, subtitle: Self.workingSubtitle, film: options)
+        }
+    }
+
+    func filmIntro() {
+        afterClearing { [weak self] in self?.showWelcome() }
+    }
+
+    /// Takes down whatever's up without logging it, then gives the exit a moment before `next`.
+    func afterClearing(_ next: @escaping () -> Void) {
+        delayTask?.cancel()
+        delayTask = nil
+        let busy = current != nil || welcomeShowing
+        if welcomeShowing { closeWelcome() }
+        if current != nil { filming = true; finish("closed") }
+        guard busy else { return next() }
+        Task {
+            try? await Task.sleep(nanoseconds: 700_000_000)
+            next()
+        }
     }
 
     // MARK: Pause

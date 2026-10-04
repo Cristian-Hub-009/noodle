@@ -32,6 +32,7 @@ Needs Xcode command line tools (`swift`) and `jq`.
 - **How to** opens beginner steps for the move, plus the most common mistake to avoid.
 - If Claude finishes while a card is up, it says so, and you can finish your set.
 - The menu bar icon shows today's count and has Pause, Show one now, Say hi to Toni, and Settings.
+- **Open Noodle** (top of the menu, or open Noodle.app again) brings up the Noodle window: the whole cast idling on a little stage. Hover one to get a wave, click one to make it yours, or try a stretch from there.
 - With Reduce motion on, cards fade in and out instead of sliding, and your noodle skips the peek.
 
 ## Settings
@@ -54,6 +55,7 @@ Under the hood it's `~/.claude-posture/config.json` (Settings > Edit config file
 | `character` | `rigatoni` | `rigatoni` (Toni), `spaghetti` (Sammy), `penne` (Patty), `lasagna` (Lenny), or `sprout` |
 | `entrance` | `card` | `card` slides in from the screen edge, `noodle` drops in from the menu bar first (top corners, skipped with Reduce motion) |
 | `expandSteps` | `false` | open How to on every card, handy while the moves are new |
+| `announce` | `false` | each card opens with "It's time to stretch!" and a wave, then shows the exercise (skipped with Reduce motion) |
 | `focus` | `all` | `neck`, `hips`, `all`, or `custom` after picking exercises by hand |
 | `holdDuringCalls` | `true` | skip cards while any app is using the mic or camera |
 | `holdDuringCalendarEvents` | `false` | skip cards during busy calendar events (asks for calendar access) |
@@ -77,6 +79,12 @@ scripts/dev.sh intro    # ...and replay the intro
 ```
 
 `app/Resources/card.html` opens in a browser as a demo with every move, the peek, the noodle drop, dark mode, Reduce motion, and the intro. Serve `app/` locally so it can load the figures, e.g. `python3 -m http.server -d app`.
+
+## Filming
+
+The menu bar has a **Film** submenu for recording demos. Pick a countdown (none, 3, 5, or 10 sec), then cue a specific stretch, the intro, Claude finishing, or the Noodle window. Toggles make Toni peek after 3 seconds instead of 20, make Start run a 5 second timer so you get to the celebration fast, and float cards over full-screen apps. Film cards never touch your count, cooldown, or rotation. Pause Noodle while you record so a real prompt doesn't cut in; film cues still work.
+
+From a script: `open -g 'claudeposture://film-doorway'` cues any stretch by id, and `open -g 'claudeposture://home'` opens the Noodle window.
 
 ## Uninstall
 

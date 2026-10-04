@@ -7,15 +7,18 @@ import WebKit
 final class Dropper: NSObject, WKScriptMessageHandler, WKNavigationDelegate {
     private let panel: CardPanel
     private let webView: WKWebView
+    private let resources: URL
     private var ready = false
     private var queued: (() -> Void)?
     private var onArrive: (() -> Void)?
     private var generation = 0
 
     init(resources: URL) {
+        self.resources = resources
         let cfg = WKWebViewConfiguration()
         webView = WKWebView(frame: .zero, configuration: cfg)
         webView.setValue(false, forKey: "drawsBackground")
+        webView.ignoreWindowOcclusion()
         panel = CardPanel(contentRect: NSRect(x: 0, y: 0, width: 120, height: 200),
                           styleMask: [.borderless, .nonactivatingPanel], backing: .buffered, defer: false)
         super.init()
@@ -24,8 +27,7 @@ final class Dropper: NSObject, WKScriptMessageHandler, WKNavigationDelegate {
         panel.backgroundColor = .clear
         panel.hasShadow = false
         panel.ignoresMouseEvents = true
-        panel.level = .floating
-        panel.collectionBehavior = [.canJoinAllSpaces, .fullScreenAuxiliary, .stationary, .ignoresCycle]
+        panel.floatOverFullScreen(false)
         panel.hidesOnDeactivate = false
         panel.isReleasedWhenClosed = false
         panel.animationBehavior = .none
@@ -56,6 +58,8 @@ final class Dropper: NSObject, WKScriptMessageHandler, WKNavigationDelegate {
             self.arrive()
         }
     }
+
+    func floatOverFullScreen(_ on: Bool) { panel.floatOverFullScreen(on) }
 
     /// Fades the rig out as the card appears in its place.
     func finish() {
@@ -89,6 +93,12 @@ final class Dropper: NSObject, WKScriptMessageHandler, WKNavigationDelegate {
         ready = true
         queued?()
         queued = nil
+    }
+
+    func webViewWebContentProcessDidTerminate(_ webView: WKWebView) {
+        debug("drop page was killed, reloading")
+        ready = false
+        webView.loadFileURL(resources.appendingPathComponent("drop.html"), allowingReadAccessTo: resources)
     }
 
     func userContentController(_ ucc: WKUserContentController, didReceive message: WKScriptMessage) {

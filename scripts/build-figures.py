@@ -84,10 +84,31 @@ class Pasta:
     lift = 6
     x1, x2 = 35, 61
     color = "#EDBB5F"
+    hi, sh = "#F8D894", "#E2A84E"   # highlight down the left of the tube, shade down the right
 
     def torso(self, top, decor_from=None): raise NotImplementedError
     def decor(self, y1, y2): return ""
     def head(self): raise NotImplementedError
+
+    def tone_xs(self):
+        return [(self.x1 + 3.2, self.hi, 2.2), (self.x2 - 2.8, self.sh, 3.2)]
+
+    def tones(self, y1, y2):
+        """Volume: a soft highlight down the left of the tube and a shade down the right. Solid tints,
+        so the head's and the torso's overlap without a seam."""
+        out = []
+        for x, color, w in self.tone_xs():
+            a = y1(x) if callable(y1) else y1
+            b = y2(x) if callable(y2) else y2
+            if b - a > 2:
+                out.append(f'<path d="M{x:g} {a:.1f} L{x:g} {b:.1f}" stroke="{color}" stroke-width="{w}"/>')
+        return "".join(out)
+
+    def strokes(self):
+        """Every vertical stroke on the tube (tones, then ridges or strands): what bends through a tilt."""
+        xs = getattr(self, "xs", None) or ()
+        return ([(x, c, w, None) for x, c, w in self.tone_xs()]
+                + [(x, self.line_color, self.line_width, 0.8) for x in xs])
 
     def joint(self, uid, angles, timing):
         r = (self.x2 - self.x1) / 2
@@ -100,14 +121,14 @@ class Pasta:
 
     def bent_lines(self, angles, timing):
         """Ridges or strands that curve from the upright torso into the tilted head, per frame."""
-        xs = getattr(self, "xs", None)
-        if not xs:
+        if not getattr(self, "xs", None):
             return ""
         top_y = 43 - self.lift - 0.5            # where the head's lines end
         out = []
-        for x in xs:
+        for x, color, width, opacity in self.strokes():
             frames = [bend_curve(x, top_y, a) for a in angles]
-            out.append(f'<path d="{frames[0]}" stroke="{self.line_color}" stroke-width="{self.line_width}" opacity="0.8">'
+            fade = f' opacity="{opacity}"' if opacity else ""
+            out.append(f'<path d="{frames[0]}" stroke="{color}" stroke-width="{width}"{fade}>'
                        f'<animate attributeName="d" values="{";".join(frames)}" {timing}/></path>')
         return "".join(out)
 
@@ -116,13 +137,13 @@ class Pasta:
         return f"M{a:g} 37 C{a:g} 42 {self.x1} 42 {self.x1} 47 L{self.x2} 47 C{self.x2} 42 {b:g} 42 {b:g} 37 Z"
 
     def neck_decor(self, dxs, timing):
-        xs = getattr(self, "xs", None)
-        if not xs:
+        if not getattr(self, "xs", None):
             return ""
         out = []
-        for x in xs:
+        for x, color, width, opacity in self.strokes():
             frames = [f"M{x + dx:g} 37 C{x + dx:g} 42 {x} 42 {x} 47" for dx in dxs]
-            out.append(f'<path d="{frames[0]}" stroke="{self.line_color}" stroke-width="{self.line_width}" opacity="0.8">'
+            fade = f' opacity="{opacity}"' if opacity else ""
+            out.append(f'<path d="{frames[0]}" stroke="{color}" stroke-width="{width}"{fade}>'
                        f'<animate attributeName="d" values="{";".join(frames)}" {timing}/></path>')
         return "".join(out)
 
@@ -133,9 +154,9 @@ class Rigatoni(Pasta):
 
     @property
     def line_color(self): return self.ridge
-    xs = (38.5, 43, 48, 53, 57.5)
+    xs = (36.8, 41.5, 48, 54.5, 59.2)   # bunched toward the edges, like ridges wrapping a tube
 
-    def decor(self, y1, y2): return lines(self.xs, y1, y2, self.ridge)
+    def decor(self, y1, y2): return self.tones(y1, y2 - 1.5) + lines(self.xs, y1, y2, self.ridge)
 
     def torso(self, top, decor_from=None):
         if top <= 29 - self.lift:   # standing: soft shoulders, hidden under the head anyway
@@ -157,13 +178,14 @@ class Rigatoni(Pasta):
 
 class Spaghetti(Pasta):
     lift, color, strand = 4, "#F2D07E", "#D5A54A"
+    hi, sh = "#FBE6AE", "#E6BE64"
     line_width = 1.2
 
     @property
     def line_color(self): return self.strand
-    xs = (39, 43.5, 48, 52.5, 57)
+    xs = (37.6, 42.3, 48, 53.7, 58.4)
 
-    def decor(self, y1, y2): return lines(self.xs, y1, y2, self.strand, 1.2, wave=1.1)
+    def decor(self, y1, y2): return self.tones(y1, y2 - 1.5) + lines(self.xs, y1, y2, self.strand, 1.2, wave=1.1)
 
     def torso(self, top, decor_from=None):
         return (f'<path data-part="body" d="M35 {top} L61 {top} L61 57 Q61 62 56 62 L40 62 Q35 62 35 57 Z" fill="{self.color}" stroke="none"/>'
@@ -174,22 +196,26 @@ class Spaghetti(Pasta):
         dome = lambda x: top - (13 ** 2 - (x - 48) ** 2) ** 0.5 + 2.5
         curl = f"M49 {17 - self.lift} C51 {8 - self.lift} 60 {7 - self.lift} 61 {12 - self.lift} C62 {17 - self.lift} 55 {18 - self.lift} 56 {13 - self.lift}"
         return (f'<path d="M35 {top} A13 13 0 0 1 61 {top} L61 {43 - self.lift} L35 {43 - self.lift} Z" fill="{self.color}" stroke="none"/>'
+                + self.tones(lambda x: dome(x) + 1.5, 43 - self.lift)
                 + lines(self.xs, dome, 43 - self.lift, self.strand, 1.2, wave=1.1)
                 + f'<path d="{curl}" stroke="{self.strand}" stroke-width="4"/><path d="{curl}" stroke="{self.color}" stroke-width="2.4"/>')
 
 
 class Penne(Pasta):
     lift, color, hole, ridge = 6, "#EEBF62", "#B5812B", "#CC933D"
+    hi, sh = "#F8D58E", "#E0AA50"
     line_width = 1.3
 
     @property
     def line_color(self): return self.ridge
-    xs = (38.5, 43, 48, 53, 57.5)
+    xs = (36.8, 41.5, 48, 54.5, 59.2)
 
     def slant_top(self, x): return (18 - self.lift) - 8 * (x - 35) / 26   # cut from low-left to high-right
     def slant_bottom(self, x): return 65 - 7 * (x - 35) / 26
 
-    def decor(self, y1, y2): return lines(self.xs, y1, lambda x: min(y2, self.slant_bottom(x) - 2.5), self.ridge)
+    def decor(self, y1, y2):
+        bottom = lambda x: min(y2, self.slant_bottom(x) - 2.5)
+        return self.tones(y1, bottom) + lines(self.xs, y1, bottom, self.ridge)
 
     def torso(self, top, decor_from=None):
         return (f'<path data-part="body" d="M35 {top} L61 {top} L61 58 L35 65 Z" fill="{self.color}" stroke="none"/>'
@@ -198,6 +224,7 @@ class Penne(Pasta):
     def head(self):
         st = self.slant_top
         return (f'<path d="M35 {st(35)} L61 {st(61)} L61 {43 - self.lift} L35 {43 - self.lift} Z" fill="{self.color}" stroke="none"/>'
+                + self.tones(lambda x: st(x) + 3, 43 - self.lift)
                 + lines(self.xs, lambda x: st(x) + 4, 43 - self.lift, self.ridge)
                 + f'<ellipse cx="48" cy="{st(48) + 0.5:.1f}" rx="11.5" ry="2.4" fill="{self.hole}" stroke="none" transform="rotate(-17 48 {st(48) + 0.5:.1f})"/>')
 
@@ -205,10 +232,15 @@ class Penne(Pasta):
 
 class Lasagna(Pasta):
     lift, x1, x2, color, sauce, cheese = 4, 32, 64, "#EDC36B", "#C9492F", "#F7EAD0"
+    hi, sh = "#F7DA97", "#DFAD52"
     layers = ((36, 3.5, "sauce"), (45, 3, "cheese"), (53, 3.5, "sauce"))
 
+    def tone_xs(self):
+        return [(self.x1 + 4.2, self.hi, 2.2), (self.x2 - 3.8, self.sh, 3.2)]
+
     def decor(self, y1, y2):
-        return "".join(band(32, 64, y, h, getattr(self, c)) for y, h, c in self.layers if y1 <= y and y + h <= y2)
+        return self.tones(y1 + 1, y2 - 1.5) + "".join(
+            band(32, 64, y, h, getattr(self, c)) for y, h, c in self.layers if y1 <= y and y + h <= y2)
 
     def torso(self, top, decor_from=None):
         return ruffled(32, top, 64, 62, self.color).replace("<path ", '<path data-part="body" ', 1) + self.decor(decor_from or top, 62)
@@ -216,6 +248,7 @@ class Lasagna(Pasta):
     def head(self):
         t = 16 - self.lift
         return (ruffled(32, t, 64, 43 - self.lift, self.color)
+                + self.tones(t + 6, 43 - self.lift)
                 + band(32, 64, t, 3.2, self.sauce) + band(32, 64, t + 3.2, 1.8, self.cheese))
 
 
@@ -256,6 +289,28 @@ def pasta(name, p):
     return make
 
 
+EYE = re.compile(r'<ellipse cx="([\d.]+)" cy="([\d.]+)" rx="[\d.]+" ry="[\d.]+" fill="#2B2420" stroke="none"'
+                 r'(?:/>|>\s*<animate attributeName="ry" values="([^"]*)" ([^/]*)/>\s*</ellipse>)')
+
+
+def catchlights(svg: str) -> str:
+    """A tiny white catchlight up and to the right of every open eye. Blinking eyes take it with them."""
+    def add(m):
+        light = f'<circle cx="{float(m.group(1)) + 0.6:g}" cy="{float(m.group(2)) - 0.9:g}" r="0.62" fill="#FFFFFF" stroke="none"'
+        if m.group(3):
+            on = ";".join("1" if float(v) > 1 else "0" for v in m.group(3).split(";"))
+            return m.group(0) + light + f'><animate attributeName="opacity" values="{on}" {m.group(4)}/></circle>'
+        return m.group(0) + light + "/>"
+    return EYE.sub(add, svg)
+
+
+SPROUT_SHINE = '<path d="M39.6 25 Q41.2 19.8 46.6 18.7" stroke="#EE9C80" stroke-width="2.2"/>'
+
+
+def sprout(svg: str) -> str:
+    return svg.replace(SPROUT_HEAD, SPROUT_HEAD + SPROUT_SHINE, 1)
+
+
 INK = "#2B2420"
 FLOOR = re.compile(r'<ellipse cx="4\d" cy="8\d" rx="[\d.]+" ry="2.6" fill="currentColor" stroke="none" opacity="0.08">(?:\s*<animate[^>]*/>\s*</ellipse>)?|<ellipse cx="4\d" cy="8\d" rx="[\d.]+" ry="2.6" fill="currentColor" stroke="none" opacity="0.08"/>')
 # Glows, motion arrows and props (door frame, chair) aren't part of the sticker, so they get no paper edge.
@@ -291,7 +346,7 @@ _puid = [0]
 def papered(make):
     def wrapped(svg: str) -> str:
         _puid[0] += 1
-        return paper(make(svg), f"p{_puid[0]}")
+        return paper(catchlights(make(svg)), f"p{_puid[0]}")
     return wrapped
 
 
@@ -301,10 +356,11 @@ CHARACTERS = {
     "spaghetti": ("Sammy the Spaghetti", pasta("spaghetti", Spaghetti())),
     "penne": ("Patty the Penne", pasta("penne", Penne())),
     "lasagna": ("Lenny the Lasagna", pasta("lasagna", Lasagna())),
-    "sprout": ("Sprout", lambda s: s),
+    "sprout": ("Sprout", sprout),
 }
 CHARACTERS = {k: (label, papered(make)) for k, (label, make) in CHARACTERS.items()}
-EXTRAS = [("wave", "Wave (intro)"), ("hang", "Hang (entrance)"), ("peek", "Peek (nudge)")]  # generated for every character too
+EXTRAS = [("wave", "Wave (intro)"), ("hang", "Hang (entrance)"), ("peek", "Peek (nudge)"), ("idle", "Idle (home)")]  # generated for every character too
+BLINK = {"rigatoni": "4.2s", "spaghetti": "3.6s", "penne": "4.9s", "lasagna": "5.4s", "sprout": "3.9s"}  # so the cast doesn't blink in unison
 
 grids = {}
 for name, (label, make) in CHARACTERS.items():
@@ -314,6 +370,8 @@ for name, (label, make) in CHARACTERS.items():
     for file, title, spec in items:
         base = figs / file
         svg = make(base.read_text()) if base.exists() else '<div class="missing"></div>'
+        if file == "idle.svg":
+            svg = svg.replace('dur="4.2s"', f'dur="{BLINK[name]}"')
         if base.exists():
             out = figs / name / file
             out.parent.mkdir(exist_ok=True)

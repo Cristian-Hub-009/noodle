@@ -4,6 +4,7 @@ import AppKit
 final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
     private var store: Store!
     private var posture: Posture!
+    private var home: HomeWindow!
     private var statusItem: NSStatusItem!
 
     // Set up in willFinishLaunching so the URL that launched us (open -g claudeposture://prompt)
@@ -15,6 +16,17 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         store = Store(dir: dir, resources: Self.resourcesURL())
         posture = Posture(store: store, card: CardController(resources: store.resources))
         posture.onChange = { [weak self] in self?.refresh() }
+        home = HomeWindow(resources: store.resources)
+        home.onAction = { [weak self] action, value in
+            guard let self else { return }
+            switch action {
+            case "character": if let id = value { self.update { $0.character = id } }
+            case "stretch": self.posture.showNow()
+            case "intro": self.posture.showWelcome()
+            default: break
+            }
+        }
+        applyFullScreen()
 
         NSAppleEventManager.shared().setEventHandler(
             self, andSelector: #selector(handleURL(_:reply:)),
@@ -47,8 +59,17 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
     @objc private func handleURL(_ event: NSAppleEventDescriptor, reply: NSAppleEventDescriptor) {
         guard let s = event.paramDescriptor(forKeyword: keyDirectObject)?.stringValue,
               let url = URL(string: s) else { return }
-        let name = url.host ?? (url as NSURL).resourceSpecifier ?? ""
-        posture.handle(name.trimmingCharacters(in: CharacterSet(charactersIn: "/")).lowercased())
+        let name = (url.host ?? (url as NSURL).resourceSpecifier ?? "")
+            .trimmingCharacters(in: CharacterSet(charactersIn: "/")).lowercased()
+        if name == "home" { return openHome() }
+        if name.hasPrefix("film-") { return posture.film(String(name.dropFirst(5)), filmOptions) }   // film-doorway
+        posture.handle(name)
+    }
+
+    /// Opening Noodle.app again (Finder, Spotlight) brings up the Noodle window.
+    func applicationShouldHandleReopen(_ sender: NSApplication, hasVisibleWindows flag: Bool) -> Bool {
+        openHome()
+        return false
     }
 
     /// Bundle Resources when running as an .app, else app/Resources next to the sources (swift run).
@@ -73,11 +94,38 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         button.image = image
         button.title = " \(store.doneToday())"
         button.toolTip = "Noodle, stretches done today"
+        home?.update(homeState())
+    }
+
+    // MARK: Noodle window
+
+    @objc private func openHome() { home.show(homeState()) }
+
+    private func homeState() -> [String: Any] {
+        let c = store.config()
+        var status = ("Watching for long prompts", "on")
+        if let until = pausedUntil {
+            let time = DateFormatter()
+            time.timeStyle = .short
+            time.dateStyle = .none
+            let day = Calendar.current.isDateInToday(until) ? "" : " tomorrow"
+            status = ("Paused until \(time.string(from: until))\(day)", "paused")
+        } else if c.quietHours.contains(Date()) {
+            status = ("Quiet hours", "paused")
+        } else if let reason = posture.blockedReason(), ["on a call", "calendar event"].contains(reason) {
+            status = (reason == "on a call" ? "Holding cards while you're on a call" : "Holding cards while you're in a meeting", "hold")
+        }
+        return [
+            "cast": Cast.allCases.map { ["id": $0.rawValue, "name": $0.name, "title": "the \($0.rawValue.capitalized)"] },
+            "character": c.character, "doneToday": store.doneToday(), "status": status.0, "statusKind": status.1,
+        ]
     }
 
     func menuNeedsUpdate(_ menu: NSMenu) {
         refresh()
         menu.removeAllItems()
+        menu.addItem(item("Open Noodle", #selector(openHome)))
+        menu.addItem(.separator())
         let time = DateFormatter()
         time.timeStyle = .short
         time.dateStyle = .none
@@ -100,6 +148,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         menu.addItem(item("Say hi to \(Cast.from(store.config().character).name)", #selector(showWelcome)))
         menu.addItem(.separator())
         menu.addItem(settingsMenu())
+        menu.addItem(filmMenu())
         menu.addItem(.separator())
         menu.addItem(item("Quit", #selector(quit), key: "q"))
     }
@@ -147,11 +196,66 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
                 self.update { $0.quietHours.enabled.toggle() }
             },
             option("Always show steps", checked: c.expandSteps) { self.update { $0.expandSteps.toggle() } },
+            option("Say \"It's time to stretch!\" first", checked: c.announce) { self.update { $0.announce.toggle() } },
             option("Open at login", checked: LoginItem.isOn) { LoginItem.set(!LoginItem.isOn) },
             .separator(),
         ]
         items.append(item("Edit config file…", #selector(openConfig)))
         return submenu("Settings", items)
+    }
+
+    // MARK: Film submenu. Cues shots on a countdown; film cards never touch the count, cooldown, or rotation.
+
+    private let defaults = UserDefaults.standard
+    private var filmDelay: Double { defaults.object(forKey: "filmDelay") as? Double ?? 5 }
+    private var filmOptions: Posture.FilmOptions {
+        Posture.FilmOptions(peekAfter: defaults.bool(forKey: "filmQuickPeek") ? 3 : nil,
+                            timer: defaults.bool(forKey: "filmShortTimer") ? 5 : nil,
+                            announce: defaults.bool(forKey: "filmAnnounce"))
+    }
+
+    private func filmMenu() -> NSMenuItem {
+        let delay = filmDelay
+        let when = delay == 0 ? "now" : "in \(Int(delay)) sec"
+        let toggle = { (key: String) in self.defaults.set(!self.defaults.bool(forKey: key), forKey: key) }
+        return submenu("Film", [
+            submenu("Countdown", [0, 3, 5, 10].map { v in
+                option(v == 0 ? "None" : "\(Int(v)) sec", checked: v == delay) { self.defaults.set(v, forKey: "filmDelay") }
+            }),
+            .separator(),
+            submenu("Stretch \(when)", store.exercises.map { ex in
+                option(ex.name, checked: false) { self.cue { self.posture.film(ex.id, self.filmOptions) } }
+            }),
+            option("Intro \(when)", checked: false) { self.cue { self.posture.filmIntro() } },
+            option("Claude finishes \(when)", checked: false) { self.cue { self.posture.handle("stop") } },
+            option("Clear the screen", checked: false) { self.posture.afterClearing {} },
+            option("Open Noodle \(when)", checked: false) { self.cue { self.openHome() } },
+            .separator(),
+            option("Open with \"It's time to stretch!\"", checked: defaults.bool(forKey: "filmAnnounce")) { toggle("filmAnnounce") },
+            option("Peek after 3 sec, not 20", checked: defaults.bool(forKey: "filmQuickPeek")) { toggle("filmQuickPeek") },
+            option("5 sec timer after Start", checked: defaults.bool(forKey: "filmShortTimer")) { toggle("filmShortTimer") },
+            option("Float over full-screen apps", checked: defaults.bool(forKey: "filmOverFullScreen")) {
+                toggle("filmOverFullScreen")
+                self.applyFullScreen()
+            },
+            .separator(),
+            info("Film cards skip your count and cooldown"),
+        ])
+    }
+
+    private func cue(_ run: @escaping () -> Void) {
+        let delay = filmDelay
+        debug("film cue in \(Int(delay))s")
+        Task {
+            try? await Task.sleep(nanoseconds: UInt64(delay * 1_000_000_000))
+            run()
+        }
+    }
+
+    private func applyFullScreen() {
+        let on = defaults.bool(forKey: "filmOverFullScreen")
+        posture.card.floatOverFullScreen(on)
+        home.floatsOverFullScreen = on
     }
 
     /// One checkable row per exercise. Keeps exercises.json order and never lets you turn off the last one.

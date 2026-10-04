@@ -1,0 +1,260 @@
+<!doctype html>
+<!--
+  The Noodle window: a welcome screen with the whole cast idling on a little stage. Swift loads it
+  once and calls window.home(state, animate) each time the window opens (animate plays the entrance):
+     state = {
+       cast: [{ id, name, title }],      folder name under figures/, "Toni", "the Rigatoni"
+       character,                        the one that's yours
+       doneToday,                        number
+       status, statusKind                "Watching for long prompts", "on" | "paused" | "hold"
+     }
+  JS -> Swift: webkit.messageHandlers.home.postMessage(
+     { action: "character", value }      picked a noodle
+     { action: "stretch" }               show a card now
+     { action: "intro" }                 replay the intro
+     { action: "close" }                 Esc or Cmd-W
+  )
+  Open in a browser for a demo.
+-->
+<html>
+<head>
+<meta charset="utf-8">
+<meta name="color-scheme" content="light dark">
+<style>
+  :root {
+    --bg: #FFFCF9; --stage: #F8F0E6; --fg: #2B2420; --muted: #6B625C; --faint: #9A918A;
+    --accent: #B7552F; --bar: #D97757; --ok: #3E9B5B; --warn: #D29A2E; --line: rgba(43, 36, 32, 0.08);
+    --btn: #F1EBE6; --btn-hover: #E9E1DB; --primary: #2B2420; --primary-hover: #3D332D; --on-primary: #FFFFFF;
+    --spot: rgba(255, 255, 255, 0.95); --floor: rgba(43, 36, 32, 0.16);
+  }
+  @media (prefers-color-scheme: dark) {
+    :root:not([data-theme="light"]) {
+      --bg: #1D1917; --stage: #2A2421; --fg: #F6F1EE; --muted: #BDB4AE; --faint: #8F8680;
+      --accent: #F0A07F; --bar: #E08A67; --ok: #6CCB8A; --warn: #E8B85C; --line: rgba(255, 255, 255, 0.07);
+      --btn: #37302D; --btn-hover: #433A36; --primary: #F6F1EE; --primary-hover: #FFFFFF; --on-primary: #221E1C;
+      --spot: rgba(255, 240, 225, 0.14); --floor: rgba(0, 0, 0, 0.35);
+    }
+  }
+  :root[data-theme="dark"] {
+    --bg: #1D1917; --stage: #2A2421; --fg: #F6F1EE; --muted: #BDB4AE; --faint: #8F8680;
+    --accent: #F0A07F; --bar: #E08A67; --ok: #6CCB8A; --warn: #E8B85C; --line: rgba(255, 255, 255, 0.07);
+    --btn: #37302D; --btn-hover: #433A36; --primary: #F6F1EE; --primary-hover: #FFFFFF; --on-primary: #221E1C;
+    --spot: rgba(255, 240, 225, 0.14); --floor: rgba(0, 0, 0, 0.35);
+  }
+
+  * { box-sizing: border-box; }
+  html, body { margin: 0; height: 100%; }
+  body {
+    background: var(--bg); color: var(--fg); overflow: hidden;
+    font: 13px/18px -apple-system, BlinkMacSystemFont, "SF Pro Text", "Helvetica Neue", sans-serif;
+    -webkit-font-smoothing: antialiased; -webkit-user-select: none; user-select: none; cursor: default;
+    display: flex; flex-direction: column; padding: 46px 36px 26px;
+  }
+  body:not(.shown) > * { visibility: hidden; }   /* blank until Swift hands over the state */
+  header { text-align: center; }
+  h1 { margin: 0; font-size: 46px; line-height: 50px; font-weight: 800; letter-spacing: -0.035em; }
+  .tagline { margin-top: 6px; font-size: 15px; line-height: 20px; color: var(--muted); }
+
+  .stage {
+    margin-top: 24px; border-radius: 22px; background: var(--stage); padding: 12px 10px 14px;
+    display: grid; grid-template-columns: repeat(5, 1fr);
+  }
+  .slot {
+    position: relative; font: inherit; color: inherit; background: none; border: 0; padding: 0;
+    display: flex; flex-direction: column; align-items: center; border-radius: 16px;
+  }
+  .pad { position: relative; width: 122px; height: 126px; display: grid; place-items: center; }
+  .spot {
+    position: absolute; inset: 6px 10px 0; border-radius: 50%; opacity: 0;
+    background: radial-gradient(closest-side, var(--spot), transparent); transition: opacity .3s ease;
+  }
+  .slot.on .spot { opacity: 1; }
+  .floor { position: absolute; bottom: 9px; width: 62px; height: 9px; border-radius: 50%; background: radial-gradient(closest-side, var(--floor), transparent); }
+  .lift { position: relative; transition: transform .35s var(--pop-ease); }
+  .slot:hover .lift { transform: translateY(-4px); }
+  .slot img {
+    display: block; width: 110px; height: 110px; transform-origin: 50% 90%;
+    animation: idle var(--idle, 3.4s) ease-in-out var(--delay, 0s) infinite;
+  }
+  @keyframes idle {
+    0%, 100% { transform: translateY(0) rotate(0deg); }
+    25% { transform: translateY(-2px) rotate(-1.4deg); }
+    50% { transform: translateY(0) rotate(0deg); }
+    75% { transform: translateY(-2px) rotate(1.4deg); }
+  }
+  .name { margin-top: 4px; font-size: 14px; line-height: 18px; font-weight: 700; transition: color .2s ease; }
+  .slot.on .name { color: var(--accent); }
+  .title { font-size: 11.5px; line-height: 15px; color: var(--faint); }
+  .yours {
+    margin-top: 6px; height: 18px; padding: 0 8px; border-radius: 999px; font-size: 10.5px; line-height: 18px; font-weight: 650;
+    background: var(--bar); color: #FFFFFF; visibility: hidden;
+  }
+  .slot.on .yours { visibility: visible; }
+
+  footer { margin-top: auto; padding-top: 16px; border-top: 1px solid var(--line); display: flex; align-items: center; gap: 8px; }
+  .status { display: flex; align-items: center; gap: 8px; color: var(--muted); min-width: 0; }
+  .status i { flex: none; width: 8px; height: 8px; border-radius: 50%; background: var(--ok); }
+  .status[data-kind="paused"] i { background: var(--warn); }
+  .status[data-kind="hold"] i { background: var(--faint); }
+  .status b { color: var(--fg); font-weight: 600; }
+  .spacer { flex: 1; }
+  button.b {
+    font: inherit; font-weight: 590; height: 28px; padding: 0 14px; border: 0; border-radius: 999px;
+    background: var(--btn); color: var(--fg); white-space: nowrap;
+    transition: background-color .15s ease, transform .16s var(--pop-ease);
+  }
+  button.b:hover { background: var(--btn-hover); }
+  button.b:active, .slot:active .lift { transform: scale(.95); transition: background-color .15s ease, transform .07s ease-out; }
+  button.b.primary { background: var(--primary); color: var(--on-primary); }
+  button.b.primary:hover { background: var(--primary-hover); }
+  button:focus-visible { outline: 2px solid var(--bar); outline-offset: 3px; }
+
+  @media (prefers-reduced-motion: reduce) { .slot img { animation: none; } }
+</style>
+</head>
+<body>
+  <header id="header">
+    <h1>Noodle</h1>
+    <div class="tagline">Stretching while Claude is noodling.</div>
+  </header>
+  <div class="stage" id="stage" role="radiogroup" aria-label="Pick your noodle"></div>
+  <footer id="footer">
+    <div class="status" id="status" data-kind="on"><i></i><span id="statusText"></span></div>
+    <div class="spacer"></div>
+    <button class="b" id="intro">Replay intro</button>
+    <button class="b primary" id="stretch">Try a stretch</button>
+  </footer>
+<script>
+  const $ = (id) => document.getElementById(id);
+  const native = window.webkit && window.webkit.messageHandlers && window.webkit.messageHandlers.home;
+  const send = (msg) => native ? native.postMessage(msg) : demo(msg);
+  const reduced = () => matchMedia("(prefers-reduced-motion: reduce)").matches;
+
+  // Same springs as card.html: SwiftUI-style duration and bounce, baked into a CSS linear() easing.
+  const LINEAR_OK = !!(window.CSS && CSS.supports && CSS.supports("transition-timing-function", "linear(0, 1)"));
+  function spring(duration, bounce, fallback) {
+    if (!LINEAR_OK) return { ease: fallback, dur: duration };
+    const k = (2 * Math.PI / duration) ** 2, c = 4 * Math.PI * (1 - bounce) / duration, dt = 1 / 240;
+    let x = 0, v = 0, end = 0;
+    const pts = [0];
+    for (let i = 1; i <= 180; i++) {
+      for (let j = 0; j < 4; j++) { v += (-k * (x - 1) - c * v) * dt; x += v * dt; }
+      pts.push(Math.round(x * 1000) / 1000);
+      if (Math.abs(x - 1) > 0.002 || Math.abs(v) > 0.05) end = i;
+    }
+    return { ease: `linear(${pts.slice(0, end + 1).concat(1).join(", ")})`, dur: (end + 1) / 60 };
+  }
+  const M = { enter: spring(0.55, 0.2, "cubic-bezier(.2, 1, .3, 1)"), pop: spring(0.36, 0.45, "cubic-bezier(.3, 1.45, .5, 1)") };
+  document.documentElement.style.setProperty("--pop-ease", M.pop.ease);
+  const play = (el, frames, m, delay = 0) => el.animate(frames, { duration: m.dur * 1000, easing: m.ease, delay: delay * 1000, fill: "both" });
+
+  // Everyone idles at their own pace so the lineup never moves in lockstep.
+  const PACE = { rigatoni: [3.4, -0.4], spaghetti: [3.0, -1.7], penne: [3.8, -2.6], lasagna: [4.2, -1.1], sprout: [3.2, -2.2] };
+  const art = (id, pose) => `figures/${id}/${pose}.svg`;
+  let state = null;
+
+  function render() {
+    const stage = $("stage");
+    const ids = state.cast.map((c) => c.id).join();
+    if (stage.dataset.ids !== ids) buildStage(stage, ids);   // updates leave the lineup (and its idles) alone
+    pick(state.character, false);
+    const done = state.doneToday || 0;
+    $("status").dataset.kind = state.statusKind || "on";
+    $("statusText").innerHTML = "";
+    $("statusText").append(state.status || "Watching for long prompts");
+    if (done) {
+      const b = document.createElement("b");
+      b.textContent = ` · ${done} ${done === 1 ? "stretch" : "stretches"} today`;
+      $("statusText").append(b);
+    }
+  }
+
+  function buildStage(stage, ids) {
+    stage.innerHTML = "";
+    stage.dataset.ids = ids;
+    state.cast.forEach((c) => {
+      const b = document.createElement("button");
+      b.className = "slot";
+      b.dataset.id = c.id;
+      b.setAttribute("role", "radio");
+      const [idle, delay] = PACE[c.id] || [3.4, 0];
+      b.innerHTML = `<div class="pad"><div class="spot"></div><div class="floor"></div><div class="lift"><img alt=""></div></div>
+        <div class="name"></div><div class="title"></div><div class="yours">Your noodle</div>`;
+      const img = b.querySelector("img");
+      img.src = art(c.id, "idle");
+      img.style.setProperty("--idle", `${idle}s`);
+      img.style.setProperty("--delay", `${delay}s`);
+      img.alt = c.name;
+      b.querySelector(".name").textContent = c.name;
+      b.querySelector(".title").textContent = c.title;
+      // Say hi on hover: swap to the wave, back to idle when the pointer leaves.
+      b.addEventListener("mouseenter", () => { img.src = art(c.id, "wave"); });
+      b.addEventListener("mouseleave", () => { img.src = art(c.id, "idle"); });
+      b.addEventListener("click", () => pick(c.id, true));
+      stage.appendChild(b);
+      new Image().src = art(c.id, "wave");   // warm the cache so the first wave doesn't blink
+    });
+  }
+
+  function pick(id, fromUser) {
+    state.character = id;
+    document.querySelectorAll(".slot").forEach((s) => {
+      const on = s.dataset.id === id;
+      s.classList.toggle("on", on);
+      s.setAttribute("aria-checked", on);
+      if (on && fromUser && !reduced()) {
+        play(s.querySelector(".lift"), [
+          { transform: "none", easing: "ease-out" },
+          { transform: "translateY(1px) scale(1.07, .9)", offset: 0.16, easing: "cubic-bezier(.2, .9, .3, 1)" },
+          { transform: "translateY(-14px) scale(.95, 1.06)", offset: 0.48, easing: "cubic-bezier(.6, 0, .9, .4)" },
+          { transform: "translateY(0) scale(1.06, .93)", offset: 0.76, easing: "ease-out" },
+          { transform: "none" }], { ease: "linear", dur: 0.62 }).finished.then((a) => a.cancel());
+        play(s.querySelector(".yours"), [{ transform: "scale(.6)", opacity: 0 }, { transform: "none", opacity: 1 }], M.pop, 0.1);
+      }
+    });
+    if (fromUser) send({ action: "character", value: id });
+  }
+
+  // The welcome: the wordmark rises in, then the cast pops up one by one.
+  function entrance() {
+    if (reduced()) return;
+    play($("header"), [{ opacity: 0, transform: "translateY(12px)" }, { opacity: 1, transform: "none" }], M.enter);
+    document.querySelectorAll(".slot").forEach((s, i) => {
+      play(s, [{ opacity: 0, transform: "translateY(22px) scale(.86)" }, { opacity: 1, transform: "none" }], M.pop, 0.12 + i * 0.07);
+    });
+    play($("footer"), [{ opacity: 0 }, { opacity: 1 }], { ease: "ease-out", dur: 0.4 }, 0.5);
+  }
+
+  window.home = function (s, animate) {
+    state = s;
+    render();
+    document.body.classList.add("shown");
+    if (animate) entrance();
+  };
+
+  $("stretch").addEventListener("click", () => send({ action: "stretch" }));
+  $("intro").addEventListener("click", () => send({ action: "intro" }));
+  document.addEventListener("keydown", (e) => {
+    if (e.key === "Escape" || (e.metaKey && e.key === "w")) send({ action: "close" });
+  });
+
+  // Browser preview.
+  function demo(msg) { console.log("home ->", msg); }
+  if (!native) {
+    document.body.style.cssText += "width: 680px; height: 470px; margin: 24px auto; border-radius: 12px; box-shadow: 0 20px 50px rgba(0,0,0,.18);";
+    document.documentElement.style.background = "#E6E0DA";
+    window.home({
+      cast: [
+        { id: "rigatoni", name: "Toni", title: "the Rigatoni" }, { id: "spaghetti", name: "Sammy", title: "the Spaghetti" },
+        { id: "penne", name: "Patty", title: "the Penne" }, { id: "lasagna", name: "Lenny", title: "the Lasagna" },
+        { id: "sprout", name: "Sprout", title: "the Sprout" }],
+      character: "rigatoni", doneToday: 3, status: "Watching for long prompts", statusKind: "on",
+    }, true);
+    document.addEventListener("keydown", (e) => {
+      if (e.key === "d") { const r = document.documentElement; r.dataset.theme = r.dataset.theme === "dark" ? "light" : "dark"; }
+      if (e.key === "r") window.home(state, true);
+    });
+  }
+</script>
+</body>
+</html>
