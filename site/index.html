@@ -10,9 +10,19 @@
 <meta name="color-scheme" content="light dark">
 <title>Noodle</title>
 <meta name="description" content="Stretching while Claude is noodling. A free Mac app that slides in a quick desk stretch while Claude Code works on a long prompt.">
+<link rel="canonical" href="https://tonitherigatoni.com/">
+<!-- Link previews need absolute URLs. -->
+<meta property="og:type" content="website">
+<meta property="og:url" content="https://tonitherigatoni.com/">
+<meta property="og:site_name" content="Noodle">
 <meta property="og:title" content="Noodle">
 <meta property="og:description" content="Stretching while Claude is noodling. A free Mac app for Claude Code.">
-<meta property="og:image" content="icon.png">
+<meta property="og:image" content="https://tonitherigatoni.com/icon.png">
+<meta property="og:image:width" content="256">
+<meta property="og:image:height" content="256">
+<meta property="og:image:alt" content="Toni the Rigatoni waving">
+<meta name="twitter:card" content="summary">
+<link rel="apple-touch-icon" href="icon.png">
 <link rel="icon" href="icon.png">
 <style>
   :root {
@@ -245,7 +255,7 @@
       <div class="install">
         <div class="panel">
           <h3>Download the app</h3>
-          <p>A regular Mac download, then one command to hook it up to Claude Code.</p>
+          <p>A regular Mac download. No Terminal needed, Noodle hooks itself up to Claude Code.</p>
           <a class="btn primary" id="dl" href="https://github.com/pcybriwsky/noodle/releases/latest/download/Noodle.zip">
             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 4v11m0 0-4.5-4.5M12 15l4.5-4.5M5 20h14"/></svg>
             Download Noodle.zip
@@ -253,9 +263,7 @@
           <ol>
             <li><b>Unzip it and drag Noodle into Applications.</b></li>
             <li><b>Open it.</b> Noodle is free and not notarized by Apple, so macOS blocks it the first time. Go to System Settings › Privacy &amp; Security, scroll down, and click <b>Open Anyway</b>.</li>
-            <li><b>Connect it to Claude Code</b> by running this in Terminal:
-              <div class="cmd"><code>/Applications/Noodle.app/Contents/Resources/bin/noodle setup</code><button class="copy" type="button">Copy</button></div>
-            </li>
+            <li><b>Click Connect.</b> Noodle opens on a Connect to Claude Code step that shows the exact change to your settings, and backs up the old file before writing.</li>
           </ol>
         </div>
         <div class="panel">

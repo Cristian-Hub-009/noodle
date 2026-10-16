@@ -7,7 +7,7 @@ cask "noodle" do
   url "https://github.com/pcybriwsky/noodle/releases/download/v#{version}/Noodle.zip"
   name "Noodle"
   desc "Desk stretches while Claude Code is working"
-  homepage "https://github.com/pcybriwsky/noodle"
+  homepage "https://tonitherigatoni.com"
 
   depends_on macos: :ventura
   depends_on formula: "jq"

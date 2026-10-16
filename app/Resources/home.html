@@ -6,12 +6,20 @@
        cast: [{ id, name, title }],      folder name under figures/, "Toni", "the Rigatoni"
        character,                        the one that's yours
        doneToday,                        number
-       status, statusKind                "Watching for long prompts", "on" | "paused" | "hold"
+       status, statusKind                "Watching for long prompts", "on" | "paused" | "hold" | "off"
+       connected                         false until Noodle's hooks are in ~/.claude/settings.json
      }
+  and window.sheet(s) for the Connect / Disconnect step over the window (null closes it):
+     s = { mode: "connect" | "disconnect", path, diff: [[kind, line]], creates, login, note, error }
+       | { mode: "done", title, message, backup }
+       kind is "+", "-", " ", or "…" (lines skipped between hunks)
   JS -> Swift: webkit.messageHandlers.home.postMessage(
      { action: "character", value }      picked a noodle
      { action: "stretch" }               show a card now
      { action: "intro" }                 replay the intro
+     { action: "connect" }               open the Connect sheet ("disconnect" for the other one)
+     { action: "apply", value }          confirm the sheet; value "login" also turns on open at login
+     { action: "sheet-dismissed" }       Not now, Cancel, Done
      { action: "close" }                 Esc or Cmd-W
   )
   Open in a browser for a demo.
@@ -96,6 +104,8 @@
   .status i { flex: none; width: 8px; height: 8px; border-radius: 50%; background: var(--ok); }
   .status[data-kind="paused"] i { background: var(--warn); }
   .status[data-kind="hold"] i { background: var(--faint); }
+  .status[data-kind="off"] i { background: var(--warn); }
+  body:not(.offline) #connect, body.offline #stretch { display: none; }
   .status b { color: var(--fg); font-weight: 600; }
   .spacer { flex: 1; }
   button.b {
@@ -108,6 +118,34 @@
   button.b.primary { background: var(--primary); color: var(--on-primary); }
   button.b.primary:hover { background: var(--primary-hover); }
   button:focus-visible { outline: 2px solid var(--bar); outline-offset: 3px; }
+
+  /* The Connect / Disconnect sheet. */
+  .scrim {
+    position: fixed; inset: 0; display: grid; place-items: center; padding: 34px 40px 22px;
+    background: color-mix(in srgb, var(--bg) 55%, transparent); -webkit-backdrop-filter: blur(6px); backdrop-filter: blur(6px);
+  }
+  .scrim[hidden] { display: none; }
+  .sheet {
+    width: 100%; max-width: 560px; max-height: 100%; display: flex; flex-direction: column; gap: 10px;
+    background: var(--bg); border-radius: 18px; padding: 22px 24px 18px;
+    box-shadow: 0 0 0 1px var(--line), 0 18px 50px rgba(0, 0, 0, .18);
+  }
+  .sheet h2 { margin: 0; font-size: 20px; line-height: 24px; font-weight: 750; letter-spacing: -0.015em; }
+  .sheet p { margin: 0; color: var(--muted); }
+  .sheet code { font: 12px/16px ui-monospace, "SF Mono", Menlo, monospace; color: var(--fg); }
+  .diff {
+    margin: 2px 0 0; padding: 8px 0; min-height: 0; flex: 1 1 auto; max-height: 190px; overflow: auto;
+    border-radius: 10px; background: var(--stage); font: 11.5px/16px ui-monospace, "SF Mono", Menlo, monospace;
+    -webkit-user-select: text; user-select: text; cursor: text;
+  }
+  .diff div { padding: 0 12px; white-space: pre; }
+  .diff .add { background: color-mix(in srgb, var(--ok) 16%, transparent); }
+  .diff .del { background: color-mix(in srgb, #D8574C 16%, transparent); }
+  .diff .gap { color: var(--faint); }
+  .sheet .note { font-size: 12px; line-height: 16px; color: var(--muted); }
+  .sheet .error { font-size: 12px; line-height: 16px; color: #C2412F; font-weight: 600; }
+  .sheet label { display: flex; align-items: center; gap: 7px; color: var(--fg); }
+  .sheet .row { display: flex; align-items: center; gap: 8px; margin-top: 6px; }
 
   @media (prefers-reduced-motion: reduce) { .slot img { animation: none; } }
 </style>
@@ -123,7 +161,23 @@
     <div class="spacer"></div>
     <button class="b" id="intro">Replay intro</button>
     <button class="b primary" id="stretch">Try a stretch</button>
+    <button class="b primary" id="connect">Connect to Claude Code</button>
   </footer>
+  <div class="scrim" id="scrim" hidden>
+    <div class="sheet" role="dialog" aria-modal="true" aria-labelledby="sheetTitle">
+      <h2 id="sheetTitle"></h2>
+      <p id="sheetText"></p>
+      <div class="diff" id="diff" aria-label="Changes to settings.json"></div>
+      <div class="note" id="sheetNote"></div>
+      <div class="error" id="sheetError" role="alert"></div>
+      <div class="row">
+        <label id="loginRow"><input type="checkbox" id="login" checked> Open Noodle at login</label>
+        <div class="spacer"></div>
+        <button class="b" id="cancel">Not now</button>
+        <button class="b primary" id="apply">Connect</button>
+      </div>
+    </div>
+  </div>
 <script>
   const $ = (id) => document.getElementById(id);
   const native = window.webkit && window.webkit.messageHandlers && window.webkit.messageHandlers.home;
@@ -160,6 +214,7 @@
     pick(state.character, false);
     const done = state.doneToday || 0;
     $("status").dataset.kind = state.statusKind || "on";
+    document.body.classList.toggle("offline", state.connected === false);
     $("statusText").innerHTML = "";
     $("statusText").append(state.status || "Watching for long prompts");
     if (done) {
@@ -232,14 +287,90 @@
     if (animate) entrance();
   };
 
+  // The Connect / Disconnect step. Swift reads settings.json, builds the diff, and does the writing.
+  let sheetMode = null;
+  window.sheet = function (s) {
+    const scrim = $("scrim");
+    sheetMode = s ? s.mode : null;
+    if (!s) { scrim.hidden = true; return; }
+    const show = (id, on) => { $(id).style.display = on ? "" : "none"; };
+    const done = s.mode === "done", connect = s.mode === "connect";
+    $("sheetTitle").textContent = done ? s.title : connect ? "Connect to Claude Code" : "Disconnect from Claude Code";
+    const text = $("sheetText");
+    text.textContent = "";
+    if (done) {
+      text.append(s.message || "");
+    } else {
+      const path = document.createElement("code");
+      path.textContent = s.path;
+      text.append(connect
+        ? "Noodle adds two hooks to "
+        : "Noodle takes its two hooks back out of ", path, connect
+        ? `${s.creates ? " (a new file)" : ""}, so Claude Code can tell it when a prompt starts and when Claude is done. Nothing else in the file changes${s.creates ? "" : ", and your current file is backed up next to it"}.`
+        : ". Everything else in the file stays as it is, and your current file is backed up next to it.");
+    }
+    const diff = $("diff");
+    diff.innerHTML = "";
+    (s.diff || []).forEach(([kind, line]) => {
+      const row = document.createElement("div");
+      row.className = { "+": "add", "-": "del", "…": "gap" }[kind] || "";
+      row.textContent = kind === "…" ? "  …" : `${kind} ${line}`;
+      diff.appendChild(row);
+    });
+    show("diff", !done && !!(s.diff && s.diff.length));
+    $("sheetNote").textContent = done && s.backup ? `Your previous settings are saved as ${s.backup}.` : s.note || "";
+    show("sheetNote", !!$("sheetNote").textContent);
+    $("sheetError").textContent = s.error || "";
+    show("sheetError", !!s.error);
+    const canApply = !!(s.diff && s.diff.length);   // an unreadable settings.json gets only the error and Close
+    show("loginRow", connect && canApply && !!s.login);
+    $("login").checked = true;
+    $("cancel").textContent = !canApply ? "Close" : connect ? "Not now" : "Cancel";
+    show("cancel", !done);
+    $("apply").textContent = done ? "Done" : connect ? "Connect" : "Disconnect";
+    show("apply", done || canApply);
+    scrim.hidden = false;
+    diff.scrollTop = 0;
+    if (!reduced()) play(scrim.firstElementChild, [{ opacity: 0, transform: "translateY(10px) scale(.98)" }, { opacity: 1, transform: "none" }], M.enter);
+    ($("apply").style.display !== "none" ? $("apply") : $("cancel")).focus();
+  };
+  function closeSheet() {
+    if (!sheetMode) return;
+    $("scrim").hidden = true;
+    sheetMode = null;
+    send({ action: "sheet-dismissed" });
+  }
+  $("apply").addEventListener("click", () => {
+    if (sheetMode === "done") return closeSheet();
+    send({ action: "apply", value: sheetMode === "connect" && $("login").checked && $("loginRow").style.display !== "none" ? "login" : "" });
+  });
+  $("cancel").addEventListener("click", closeSheet);
+  $("connect").addEventListener("click", () => send({ action: "connect" }));
+
   $("stretch").addEventListener("click", () => send({ action: "stretch" }));
   $("intro").addEventListener("click", () => send({ action: "intro" }));
   document.addEventListener("keydown", (e) => {
+    if (e.key === "Escape" && sheetMode) return closeSheet();
     if (e.key === "Escape" || (e.metaKey && e.key === "w")) send({ action: "close" });
   });
 
   // Browser preview.
-  function demo(msg) { console.log("home ->", msg); }
+  function demo(msg) {
+    console.log("home ->", msg);
+    if (msg.action === "connect") window.sheet(DEMO_SHEET);
+    if (msg.action === "apply") {
+      window.sheet({ mode: "done", title: "Connected to Claude Code", backup: "settings.json.bak-20261015-221500",
+        message: "Next time Claude works on something for a while, your noodle pops up with a stretch. Claude Code sessions that were already open may need a restart to notice." });
+      window.home({ ...state, connected: true, status: "Watching for long prompts", statusKind: "on" }, false);
+    }
+  }
+  const DEMO_SHEET = { mode: "connect", path: "~/.claude/settings.json", login: true, diff: [
+    [" ", "  \"model\": \"opus\","], [" ", "  \"permissions\": {"], ["…", ""], [" ", "    ]"], ["-", "  }"], ["+", "  },"],
+    ["+", "  \"hooks\": {"], ["+", "    \"UserPromptSubmit\": ["], ["+", "      {"], ["+", "        \"hooks\": ["], ["+", "          {"],
+    ["+", "            \"type\": \"command\","], ["+", "            \"command\": \"open -g 'claudeposture://prompt' >/dev/null 2>&1 &\""],
+    ["+", "          }"], ["+", "        ]"], ["+", "      }"], ["+", "    ],"], ["+", "    \"Stop\": ["], ["+", "      {"], ["+", "        \"hooks\": ["],
+    ["+", "          {"], ["+", "            \"type\": \"command\","], ["+", "            \"command\": \"open -g 'claudeposture://stop' >/dev/null 2>&1 &\""],
+    ["+", "          }"], ["+", "        ]"], ["+", "      }"], ["+", "    ]"], ["+", "  }"], [" ", "}"]] };
   if (!native) {
     document.body.style.cssText += "width: 680px; height: 470px; margin: 24px auto; border-radius: 12px; box-shadow: 0 20px 50px rgba(0,0,0,.18);";
     document.documentElement.style.background = "#E6E0DA";
@@ -248,11 +379,13 @@
         { id: "rigatoni", name: "Toni", title: "the Rigatoni" }, { id: "spaghetti", name: "Sammy", title: "the Spaghetti" },
         { id: "penne", name: "Patty", title: "the Penne" }, { id: "lasagna", name: "Lenny", title: "the Lasagna" },
         { id: "sprout", name: "Sprout", title: "the Sprout" }],
-      character: "rigatoni", doneToday: 3, status: "Watching for long prompts", statusKind: "on",
+      character: "rigatoni", doneToday: 0, status: "Not connected to Claude Code", statusKind: "off", connected: false,
     }, true);
+    if (location.hash === "#connect") window.sheet(DEMO_SHEET);
     document.addEventListener("keydown", (e) => {
       if (e.key === "d") { const r = document.documentElement; r.dataset.theme = r.dataset.theme === "dark" ? "light" : "dark"; }
       if (e.key === "r") window.home(state, true);
+      if (e.key === "c" && !sheetMode) window.sheet(DEMO_SHEET);
     });
   }
 </script>

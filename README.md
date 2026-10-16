@@ -1,6 +1,6 @@
 # Noodle
 
-Stretching while Claude is noodling.
+Stretching while Claude is noodling. **[tonitherigatoni.com](https://tonitherigatoni.com)**
 
 ![Toni the Rigatoni sliding in with a stretch](docs/demo.gif)
 <!-- GIF placeholder: record a card popping up and drop it at docs/demo.gif -->
@@ -10,6 +10,10 @@ While Claude Code is busy on a long prompt, a card slides in from the edge of yo
 Works everywhere Claude Code runs hooks: the CLI, the VS Code and Cursor extensions, and the Code tab in Claude Desktop. macOS only.
 
 ## Install
+
+The easy way, no Terminal: download [Noodle.zip](https://github.com/pcybriwsky/noodle/releases/latest/download/Noodle.zip), unzip it, drag Noodle into Applications, and open it. It's ad-hoc signed, not notarized, so macOS blocks it the first time: go to System Settings › Privacy & Security and click **Open Anyway**. Noodle then opens on a **Connect to Claude Code** step that shows the exact change to `~/.claude/settings.json`. Click Connect and you're set.
+
+Or from Terminal:
 
 ```bash
 curl -fsSL https://raw.githubusercontent.com/pcybriwsky/noodle/main/scripts/get.sh | bash
@@ -22,11 +26,13 @@ brew install --cask pcybriwsky/tap/noodle
 noodle setup
 ```
 
-Either way you get the latest release in `~/Applications` (Homebrew uses `/Applications`), and `noodle setup` adds two hooks to `~/.claude/settings.json`. You'll see the exact diff and get asked before anything is written, and your old file gets backed up to `settings.json.bak-<timestamp>`. Running it again is safe, it won't add the hooks twice.
+Either way you get the latest release in `~/Applications` (Homebrew uses `/Applications`), and `noodle setup` adds the same two hooks from Terminal.
 
-It also asks whether to open the app at login (you can flip that later in Settings). First launch, your noodle says hi and walks you through a quick desk setup check.
+However you connect, you see the exact diff and get asked before anything is written, and your old file gets backed up to `settings.json.bak-<timestamp>`. Only Noodle's two hooks are added, everything else in the file (other hooks, key order) stays as it is. Connecting again is safe, it won't add the hooks twice. Claude Code sessions that were already open may need a restart to pick them up.
 
-Needs `jq` (built into macOS 15 and later, `brew install jq` before that). The app is ad-hoc signed, not notarized, so both installers clear the quarantine flag so macOS lets it open.
+Both ways also offer to open the app at login (you can flip that later in Settings). First launch, your noodle says hi and walks you through a quick desk setup check.
+
+`noodle setup` needs `jq` (built into macOS 15 and later, `brew install jq` before that); the in-app Connect step doesn't. Both Terminal installers clear the quarantine flag so macOS lets the app open without the Open Anyway step.
 
 ### From source
 
@@ -48,11 +54,12 @@ Builds `Noodle.app` and does the same setup. Needs Xcode command line tools (`sw
 - If Claude finishes while a card is up, it says so, and you can finish your set.
 - The menu bar icon shows today's count and has Pause, Show one now, Say hi to Toni, and Settings.
 - **Open Noodle** (top of the menu, or open Noodle.app again) brings up the Noodle window: the whole cast idling on a little stage. Hover one to get a wave, click one to make it yours, or try a stretch from there.
+- Not connected to Claude Code yet? Noodle opens its window on the Connect step at launch, and the menu and the Noodle window both have **Connect to Claude Code**. Click **Not now** and it stops asking at launch.
 - With Reduce motion on, cards fade in and out instead of sliding, and your noodle skips the peek.
 
 ## Settings
 
-Everything lives under **Settings** in the menu bar: focus, character, entrance, how long before a card shows, how often, snooze length, corner, which exercises, holding during calls or calendar events, quiet hours, always show steps, and open at login.
+Everything lives under **Settings** in the menu bar: focus, character, entrance, how long before a card shows, how often, snooze length, corner, which exercises, holding during calls or calendar events, quiet hours, always show steps, open at login, and Connect to / Disconnect from Claude Code.
 
 **Focus** picks the rotation: *Tech neck* leans on chin tucks, neck, and upper back. *Tight hips* (anterior pelvic tilt) leans on hip flexors and legs. *General stiffness* is all eight. The intro asks, and you can switch anytime.
 
@@ -93,6 +100,8 @@ scripts/dev.sh show     # ...and show a card
 scripts/dev.sh intro    # ...and replay the intro
 ```
 
+`scripts/test-hooks.sh` checks the settings.json merge on temp files, through both the jq scripts and the app's Swift version (`ClaudeHooks.swift`), and fails if the two ever write different bytes. Pass your own `settings.json` to round-trip a copy of it too. `CLAUDE_SETTINGS=/path/to/copy.json` points the app (and the scripts) at a test file instead of `~/.claude/settings.json`.
+
 `app/Resources/card.html` opens in a browser as a demo with every move, the peek, the noodle drop, dark mode, Reduce motion, and the intro. Serve `app/` locally so it can load the figures, e.g. `python3 -m http.server -d app`.
 
 ## Filming
@@ -115,7 +124,9 @@ For a curl install, disconnect it and then delete the app:
 
 From source, `scripts/uninstall.sh` does both.
 
-Each one takes out only the two hooks Noodle added, leaving the rest of `settings.json` alone. `~/.claude-posture` stays unless you delete it (or `brew uninstall --zap`). To keep the app but disconnect it from Claude Code, run `noodle remove`.
+Each one takes out only the two hooks Noodle added, leaving the rest of `settings.json` alone. `~/.claude-posture` stays unless you delete it (or `brew uninstall --zap`). To keep the app but disconnect it from Claude Code, use Settings › Disconnect from Claude Code… in the menu bar (same preview and backup as connecting), or run `noodle remove`.
+
+If you installed by download, disconnect first (Settings › Disconnect from Claude Code…), then quit Noodle and drag it to the Trash.
 
 ## Releasing
 
