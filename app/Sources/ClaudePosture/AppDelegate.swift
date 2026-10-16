@@ -28,6 +28,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
             case "intro": self.posture.showWelcome()
             case "connect", "disconnect": self.showHooksSheet(connect: action == "connect")
             case "apply": self.applyHooks(login: value == "login")
+            case "timer": self.useTimer(fromSheet: true)
             case "sheet-dismissed", "closed": self.sheetClosed()
             default: break
             }
@@ -48,7 +49,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         // Not hooked up to Claude Code yet (a fresh download): open the Noodle window on the Connect step,
         // unless you've said "Not now" before. First launch, Toni says hi, after that step if it's showing.
         // Waits a beat so a launching URL event is handled first.
-        let needsConnect = !hooksConnected && !defaults.bool(forKey: "connectDismissed")
+        let needsConnect = needsHooks && !defaults.bool(forKey: "connectDismissed")
         if needsConnect || store.state().onboarded != true {
             Task { [weak self] in
                 try? await Task.sleep(nanoseconds: 1_500_000_000)
@@ -112,25 +113,27 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
 
     private func homeState() -> [String: Any] {
         let c = store.config()
-        let connected = hooksConnected
+        let needsConnect = needsHooks
+        let time = DateFormatter()
+        time.timeStyle = .short
+        time.dateStyle = .none
         var status = ("Watching for long prompts", "on")
-        if !connected {
+        if needsConnect {
             status = ("Not connected to Claude Code", "off")
         } else if let until = pausedUntil {
-            let time = DateFormatter()
-            time.timeStyle = .short
-            time.dateStyle = .none
             let day = Calendar.current.isDateInToday(until) ? "" : " tomorrow"
             status = ("Paused until \(time.string(from: until))\(day)", "paused")
         } else if c.quietHours.contains(Date()) {
             status = ("Quiet hours", "paused")
         } else if let reason = posture.blockedReason(), ["on a call", "calendar event"].contains(reason) {
             status = (reason == "on a call" ? "Holding cards while you're on a call" : "Holding cards while you're in a meeting", "hold")
+        } else if let due = posture.timerDue() {
+            status = ("On a timer, next stretch around \(time.string(from: max(due, Date())))", "on")
         }
         return [
             "cast": Cast.allCases.map { ["id": $0.rawValue, "name": $0.name, "title": "the \($0.rawValue.capitalized)"] },
             "character": c.character, "doneToday": store.doneToday(), "status": status.0, "statusKind": status.1,
-            "connected": connected,
+            "needsConnect": needsConnect, "mode": c.mode,
         ]
     }
 
@@ -138,7 +141,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         refresh()
         menu.removeAllItems()
         menu.addItem(item("Open Noodle", #selector(openHome)))
-        if !hooksConnected { menu.addItem(item("Connect to Claude Code…", #selector(openConnect))) }
+        if needsHooks { menu.addItem(item("Connect to Claude Code…", #selector(openConnect))) }
         menu.addItem(.separator())
         let time = DateFormatter()
         time.timeStyle = .short
@@ -153,6 +156,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
             menu.addItem(.separator())
         } else if let reason = posture.blockedReason(), ["on a call", "calendar event"].contains(reason) {
             menu.addItem(info(reason == "on a call" ? "Holding cards: you're on a call" : "Holding cards: you're in a meeting"))
+            menu.addItem(.separator())
+        } else if let due = posture.timerDue() {
+            menu.addItem(info("Next stretch around \(time.string(from: max(due, Date())))"))
             menu.addItem(.separator())
         }
         menu.addItem(item("Pause for 1 hour", #selector(pauseHour)))
@@ -182,7 +188,13 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
             option(f.title, checked: c.focus == f.rawValue) { self.store.apply(focus: f); self.refresh() }
         }
         if Focus(rawValue: c.focus) == nil { focusItems.append(info("Custom (picked by hand)")); focusItems.last?.state = .on }
+        let every = "every \(Int(c.cooldownMinutes)) min"
         var items: [NSMenuItem] = [
+            submenu("Remind me", [
+                option("While Claude works", checked: !c.onTimer) { self.useClaude() },
+                option("On a timer, \(every)", checked: c.onTimer) { self.useTimer(fromSheet: false) },
+            ]),
+            .separator(),
             submenu("Focus", focusItems),
             submenu("Character", characters.map { id, title in
                 option(title, checked: c.character == id) { self.update { $0.character = id } }
@@ -192,7 +204,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
             }),
             submenu("Show a card after", choices([10, 15, 30, 60], current: c.delaySeconds,
                                                  label: { "\(Int($0)) sec of Claude working" }) { v in self.update { $0.delaySeconds = v } }),
-            submenu("At most every", choices([10, 20, 30, 45, 60], current: c.cooldownMinutes,
+            submenu(c.onTimer ? "Every" : "At most every", choices([10, 20, 30, 45, 60], current: c.cooldownMinutes,
                                              label: { "\(Int($0)) min" }) { v in self.update { $0.cooldownMinutes = v } }),
             submenu("Snooze for", choices([5, 10, 15, 30], current: c.snoozeMinutes,
                                           label: { "\(Int($0)) min" }) { v in self.update { $0.snoozeMinutes = v } }),
@@ -217,12 +229,31 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         items.append(hooksConnected ? item("Disconnect from Claude Code…", #selector(openDisconnect))
                                     : item("Connect to Claude Code…", #selector(openConnect)))
         items.append(item("Edit config file…", #selector(openConfig)))
+        if c.onTimer { items.removeAll { $0.title == "Show a card after" } }   // only means something with Claude
         return submenu("Settings", items)
     }
 
     // MARK: Claude Code hooks. The same change `noodle setup` / `noodle remove` make, previewed in the Noodle window.
 
     private var hooksConnected: Bool { (try? hooks.isConnected()) ?? false }
+    /// Waiting on the Connect step: Claude mode without the hooks. Timer mode doesn't need them.
+    private var needsHooks: Bool { !store.config().onTimer && !hooksConnected }
+
+    /// Settings › Remind me › While Claude works. Without the hooks that's the Connect step.
+    private func useClaude() {
+        update { $0.mode = "claude" }
+        if !hooksConnected { openConnect() }
+    }
+
+    /// A card every cooldownMinutes, Claude or not. From the Connect step it's the "Use a timer instead" way out.
+    private func useTimer(fromSheet: Bool) {
+        update { $0.mode = "timer" }
+        posture.restartTimer()
+        debug("mode timer, every \(Int(store.config().cooldownMinutes)) min")
+        guard fromSheet else { return }
+        showDone("On a timer", "Your noodle will drop by with a stretch every \(Int(store.config().cooldownMinutes)) minutes while you're at your Mac, Claude or not. Time away from the keyboard counts as a break. Switch anytime under Settings › Remind me.")
+        if store.state().onboarded != true { posture.showWelcome() }
+    }
 
     @objc private func openConnect() {
         home.show(homeState())
@@ -269,12 +300,13 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
             debug("\(mode)ed Claude Code hooks in \(hooks.url.path)\(backup.map { ", backup \($0.lastPathComponent)" } ?? "")")
             if connect {
                 defaults.removeObject(forKey: "connectDismissed")
+                if store.config().onTimer { update { $0.mode = "claude" } }   // connecting means you want cards with Claude
                 if login { LoginItem.set(true) }
             }
             refresh()
             showDone(connect ? "Connected to Claude Code" : "Disconnected",
                      connect ? "Next time Claude works on something for a while, your noodle pops up with a stretch. Claude Code sessions that were already open may need a restart to notice."
-                             : "Noodle won't hear from Claude Code anymore. Connect again anytime from Settings in the menu bar.",
+                             : "Noodle won't hear from Claude Code anymore. Connect again anytime from Settings in the menu bar, or have it remind you on a timer under Settings › Remind me.",
                      backup: backup)
             if connect && store.state().onboarded != true { posture.showWelcome() }
         } catch ClaudeHooks.Failure.changedOnDisk {

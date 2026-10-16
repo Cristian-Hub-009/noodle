@@ -41,6 +41,7 @@ struct QuietHours: Codable {
 }
 
 struct Config: Codable {
+    var mode = "claude"                 // claude (cards while Claude works, via the hooks) or timer (one every cooldownMinutes)
     var delaySeconds: Double = 15
     var cooldownMinutes: Double = 20
     var snoozeMinutes: Double = 10
@@ -56,10 +57,13 @@ struct Config: Codable {
     var holdDuringCalendarEvents = false // no cards during busy calendar events (asks for calendar access)
     var focus = Focus.all.rawValue      // neck, hips, all, or "custom" once exercises are picked by hand
 
+    var onTimer: Bool { mode == "timer" }
+
     init() {}
     init(from decoder: Decoder) throws {
         let c = try decoder.container(keyedBy: CodingKeys.self)
         let d = Config()
+        mode = try c.decodeIfPresent(String.self, forKey: .mode) ?? d.mode
         delaySeconds = try c.decodeIfPresent(Double.self, forKey: .delaySeconds) ?? d.delaySeconds
         cooldownMinutes = try c.decodeIfPresent(Double.self, forKey: .cooldownMinutes) ?? d.cooldownMinutes
         snoozeMinutes = try c.decodeIfPresent(Double.self, forKey: .snoozeMinutes) ?? d.snoozeMinutes

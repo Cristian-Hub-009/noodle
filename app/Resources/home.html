@@ -7,7 +7,8 @@
        character,                        the one that's yours
        doneToday,                        number
        status, statusKind                "Watching for long prompts", "on" | "paused" | "hold" | "off"
-       connected                         false until Noodle's hooks are in ~/.claude/settings.json
+       needsConnect                      Claude mode without Noodle's hooks in ~/.claude/settings.json yet
+       mode                              "claude" | "timer"
      }
   and window.sheet(s) for the Connect / Disconnect step over the window (null closes it):
      s = { mode: "connect" | "disconnect", path, diff: [[kind, line]], creates, login, note, error }
@@ -19,6 +20,7 @@
      { action: "intro" }                 replay the intro
      { action: "connect" }               open the Connect sheet ("disconnect" for the other one)
      { action: "apply", value }          confirm the sheet; value "login" also turns on open at login
+     { action: "timer" }                 skip Claude, show a card every few minutes instead
      { action: "sheet-dismissed" }       Not now, Cancel, Done
      { action: "close" }                 Esc or Cmd-W
   )
@@ -146,6 +148,8 @@
   .sheet .error { font-size: 12px; line-height: 16px; color: #C2412F; font-weight: 600; }
   .sheet label { display: flex; align-items: center; gap: 7px; color: var(--fg); }
   .sheet .row { display: flex; align-items: center; gap: 8px; margin-top: 6px; }
+  button.link { font: inherit; font-weight: 600; border: 0; padding: 0; background: none; color: var(--accent); }
+  button.link:hover { text-decoration: underline; text-underline-offset: 3px; }
 
   @media (prefers-reduced-motion: reduce) { .slot img { animation: none; } }
 </style>
@@ -170,6 +174,7 @@
       <div class="diff" id="diff" aria-label="Changes to settings.json"></div>
       <div class="note" id="sheetNote"></div>
       <div class="error" id="sheetError" role="alert"></div>
+      <div class="note" id="timerRow">Not using Claude Code? <button class="link" id="timer">Remind me on a timer instead</button></div>
       <div class="row">
         <label id="loginRow"><input type="checkbox" id="login" checked> Open Noodle at login</label>
         <div class="spacer"></div>
@@ -214,7 +219,7 @@
     pick(state.character, false);
     const done = state.doneToday || 0;
     $("status").dataset.kind = state.statusKind || "on";
-    document.body.classList.toggle("offline", state.connected === false);
+    document.body.classList.toggle("offline", !!state.needsConnect);
     $("statusText").innerHTML = "";
     $("statusText").append(state.status || "Watching for long prompts");
     if (done) {
@@ -324,6 +329,7 @@
     show("sheetError", !!s.error);
     const canApply = !!(s.diff && s.diff.length);   // an unreadable settings.json gets only the error and Close
     show("loginRow", connect && canApply && !!s.login);
+    show("timerRow", connect);
     $("login").checked = true;
     $("cancel").textContent = !canApply ? "Close" : connect ? "Not now" : "Cancel";
     show("cancel", !done);
@@ -345,6 +351,7 @@
     send({ action: "apply", value: sheetMode === "connect" && $("login").checked && $("loginRow").style.display !== "none" ? "login" : "" });
   });
   $("cancel").addEventListener("click", closeSheet);
+  $("timer").addEventListener("click", () => send({ action: "timer" }));
   $("connect").addEventListener("click", () => send({ action: "connect" }));
 
   $("stretch").addEventListener("click", () => send({ action: "stretch" }));
@@ -361,7 +368,12 @@
     if (msg.action === "apply") {
       window.sheet({ mode: "done", title: "Connected to Claude Code", backup: "settings.json.bak-20261015-221500",
         message: "Next time Claude works on something for a while, your noodle pops up with a stretch. Claude Code sessions that were already open may need a restart to notice." });
-      window.home({ ...state, connected: true, status: "Watching for long prompts", statusKind: "on" }, false);
+      window.home({ ...state, needsConnect: false, status: "Watching for long prompts", statusKind: "on" }, false);
+    }
+    if (msg.action === "timer") {
+      window.sheet({ mode: "done", title: "On a timer",
+        message: "Your noodle will drop by with a stretch every 20 minutes while you're at your Mac, Claude or not. Time away from the keyboard counts as a break. Switch anytime under Settings › Remind me." });
+      window.home({ ...state, needsConnect: false, mode: "timer", status: "On a timer, next stretch around 3:40 PM", statusKind: "on" }, false);
     }
   }
   const DEMO_SHEET = { mode: "connect", path: "~/.claude/settings.json", login: true, diff: [
@@ -379,7 +391,7 @@
         { id: "rigatoni", name: "Toni", title: "the Rigatoni" }, { id: "spaghetti", name: "Sammy", title: "the Spaghetti" },
         { id: "penne", name: "Patty", title: "the Penne" }, { id: "lasagna", name: "Lenny", title: "the Lasagna" },
         { id: "sprout", name: "Sprout", title: "the Sprout" }],
-      character: "rigatoni", doneToday: 0, status: "Not connected to Claude Code", statusKind: "off", connected: false,
+      character: "rigatoni", doneToday: 0, status: "Not connected to Claude Code", statusKind: "off", needsConnect: true, mode: "claude",
     }, true);
     if (location.hash === "#connect") window.sheet(DEMO_SHEET);
     document.addEventListener("keydown", (e) => {

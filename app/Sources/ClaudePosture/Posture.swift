@@ -10,6 +10,9 @@ final class Posture {
     static let workingSubtitle = "Claude's on it. Good time for a quick one."
     static let manualSubtitle = "Quick one while you're here."
     static let stoppedSubtitle = "Claude's done, finish your set"
+    static let timerSubtitle = "Been a while. Quick one?"
+    static let idleBreakSeconds: Double = 300  // this long away from the keyboard counts as a break, and restarts the timer
+    static let idleSkipSeconds: Double = 90    // the timer holds a card while you're not at the keyboard
 
     let store: Store
     let card: CardController
@@ -27,6 +30,7 @@ final class Posture {
     private var hovering = false
     private var dismissDeadline: Date?
     private var dismissOutcome = "ignored"
+    private var timerSince = Date()             // timer mode: the interval runs from here (launch, switching modes, or a break)
 
     init(store: Store, card: CardController) {
         self.store = store
@@ -56,6 +60,12 @@ final class Posture {
             default: debug("unknown card action \(action)")
             }
         }
+        Task { [weak self] in
+            while true {
+                try? await Task.sleep(nanoseconds: 15 * 1_000_000_000)
+                self?.timerTick()
+            }
+        }
     }
 
     func handle(_ event: String) {
@@ -76,6 +86,7 @@ final class Posture {
     /// Start the delay. A pending delay isn't restarted, so back-to-back prompts
     /// from several sessions still fire on the first one's schedule.
     private func prompt() {
+        if store.config().onTimer { return }   // the timer runs the show, Claude's hooks are just ignored
         guard current == nil, delayTask == nil else { return }
         let delay = max(0, store.config().delaySeconds)
         delayTask = Task { [weak self] in
@@ -89,7 +100,7 @@ final class Posture {
     private func stop() {
         delayTask?.cancel()
         delayTask = nil
-        if current != nil, !stopped {
+        if current != nil, !stopped, !store.config().onTimer {
             stopped = true
             card.setSubtitle(Self.stoppedSubtitle)
         }
@@ -107,6 +118,41 @@ final class Posture {
         if welcomeShowing { return debug("not showing: intro is up") }
         if let reason = blockedReason() { return debug("not showing: \(reason)") }
         show(subtitle: Self.workingSubtitle)
+    }
+
+    // MARK: Timer mode
+
+    /// Restarts the interval, e.g. on switching to timer mode, so the first card is a full interval away.
+    func restartTimer() {
+        timerSince = Date()
+        onChange?()
+    }
+
+    /// When the next timer card is due (holds aside), or nil outside timer mode.
+    func timerDue() -> Date? {
+        let c = store.config()
+        guard c.onTimer else { return nil }
+        let fromStart = timerSince.addingTimeInterval(c.cooldownMinutes * 60)
+        return max(fromStart, store.state().nextAllowed ?? fromStart)
+    }
+
+    private func timerTick() {
+        guard let due = timerDue() else { return }
+        let idle = Self.idleSeconds()
+        if idle >= Self.idleBreakSeconds {
+            if Date().timeIntervalSince(timerSince) > 1 { debug("away \(Int(idle))s, timer restarts when you're back") }
+            timerSince = Date()
+            return
+        }
+        guard Date() >= due, current == nil, !welcomeShowing, delayTask == nil else { return }
+        if idle >= Self.idleSkipSeconds { return }
+        if let reason = blockedReason() { return debug("timer not showing: \(reason)") }
+        show(subtitle: Self.timerSubtitle)
+    }
+
+    /// Seconds since the last keyboard, mouse, or trackpad input.
+    private static func idleSeconds() -> Double {
+        CGEventSource.secondsSinceLastEventType(.combinedSessionState, eventType: CGEventType(rawValue: ~0)!)
     }
 
     /// Why an automatic card can't show right now, or nil if it can.

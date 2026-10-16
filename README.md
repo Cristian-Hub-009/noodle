@@ -55,11 +55,20 @@ Builds `Noodle.app` and does the same setup. Needs Xcode command line tools (`sw
 - The menu bar icon shows today's count and has Pause, Show one now, Say hi to Toni, and Settings.
 - **Open Noodle** (top of the menu, or open Noodle.app again) brings up the Noodle window: the whole cast idling on a little stage. Hover one to get a wave, click one to make it yours, or try a stretch from there.
 - Not connected to Claude Code yet? Noodle opens its window on the Connect step at launch, and the menu and the Noodle window both have **Connect to Claude Code**. Click **Not now** and it stops asking at launch.
+
+### No Claude? Use the timer
+
+Noodle doesn't need Claude Code. Pick **Settings › Remind me › On a timer** (or **Remind me on a timer instead** on the Connect step) and your noodle drops by every 20 minutes while you're at your Mac, Claude or not. The interval is the same **Every** setting, so 10, 30, 45, or 60 minutes work too.
+
+- Five minutes away from the keyboard counts as a break, so the clock starts over when you're back instead of greeting you with a card.
+- Pause, Snooze, quiet hours, and holding during calls or meetings all work the same as with Claude.
+- The menu and the Noodle window show when the next one is due.
+- Switch back with **Settings › Remind me › While Claude works**. If the hooks aren't in yet, that opens the Connect step.
 - With Reduce motion on, cards fade in and out instead of sliding, and your noodle skips the peek.
 
 ## Settings
 
-Everything lives under **Settings** in the menu bar: focus, character, entrance, how long before a card shows, how often, snooze length, corner, which exercises, holding during calls or calendar events, quiet hours, always show steps, open at login, and Connect to / Disconnect from Claude Code.
+Everything lives under **Settings** in the menu bar: when to remind you (while Claude works, or on a timer), focus, character, entrance, how long before a card shows, how often, snooze length, corner, which exercises, holding during calls or calendar events, quiet hours, always show steps, open at login, and Connect to / Disconnect from Claude Code.
 
 **Focus** picks the rotation: *Tech neck* leans on chin tucks, neck, and upper back. *Tight hips* (anterior pelvic tilt) leans on hip flexors and legs. *General stiffness* is all eight. The intro asks, and you can switch anytime.
 
@@ -67,8 +76,9 @@ Under the hood it's `~/.claude-posture/config.json` (Settings > Edit config file
 
 | key | default | what it does |
 |---|---|---|
-| `delaySeconds` | `15` | how long a prompt has to run before a card shows |
-| `cooldownMinutes` | `20` | minimum gap between cards |
+| `mode` | `claude` | `claude` shows cards while Claude works (needs the hooks), `timer` shows one every `cooldownMinutes` |
+| `delaySeconds` | `15` | how long a prompt has to run before a card shows (Claude mode) |
+| `cooldownMinutes` | `20` | minimum gap between cards, or the interval in timer mode |
 | `snoozeMinutes` | `10` | extra wait after Snooze |
 | `position` | `top-right` | `top-right`, `top-left`, `bottom-right`, `bottom-left` |
 | `inset` | `16` | distance from the screen edge |
