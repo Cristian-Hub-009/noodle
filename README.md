@@ -136,7 +136,7 @@ The tag sets the version, so there's nothing to bump by hand. Tag and push:
 git tag v0.2.0 && git push origin v0.2.0
 ```
 
-[`.github/workflows/release.yml`](.github/workflows/release.yml) builds a universal `Noodle.app`, signs it with the NGEN ART CO Developer ID (hardened runtime, [`app/Noodle.entitlements`](app/Noodle.entitlements)), has Apple notarize it and staples the ticket, attaches `Noodle.zip` and its sha256 to a GitHub Release, and, if the `TAP_TOKEN` secret is set, updates `Casks/noodle.rb` in [pcybriwsky/homebrew-tap](https://github.com/pcybriwsky/homebrew-tap) from [`packaging/homebrew/noodle.rb`](packaging/homebrew/noodle.rb).
+[`.github/workflows/release.yml`](.github/workflows/release.yml) builds a universal `Noodle.app`, signs it with the NGEN ART CO Developer ID (hardened runtime, [`app/Noodle.entitlements`](app/Noodle.entitlements)), has Apple notarize it and staples the ticket, attaches `Noodle.zip` and its sha256 to a GitHub Release, and, with the `TAP_DEPLOY_KEY` secret set (an SSH deploy key that can only write to the tap), updates `Casks/noodle.rb` in [pcybriwsky/homebrew-tap](https://github.com/pcybriwsky/homebrew-tap) from [`packaging/homebrew/noodle.rb`](packaging/homebrew/noodle.rb).
 
 Signing needs five repo secrets, listed at the top of the workflow: the Developer ID certificate as a base64 `.p12` plus its password, and an App Store Connect API key (`.p8`, key ID, issuer ID). Without them a release still goes out, ad-hoc signed. To sign locally, `SIGN_IDENTITY="Developer ID Application: NGEN ART CO (HY8S2WXJ2X)" scripts/build-app.sh`.
 

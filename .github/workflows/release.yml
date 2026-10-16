@@ -1,5 +1,6 @@
 # Push a tag like v0.2.0 to build a universal Noodle.app, attach Noodle.zip to a GitHub
-# Release, and (when the TAP_TOKEN secret is set) bump the cask in pcybriwsky/homebrew-tap.
+# Release, and (when the TAP_DEPLOY_KEY secret is set) bump the cask in pcybriwsky/homebrew-tap.
+#   TAP_DEPLOY_KEY             private half of an SSH deploy key with write access to homebrew-tap only
 #
 # With the signing secrets set, the app is signed with your Developer ID, notarized by Apple and
 # stapled, so it opens without the "Open Anyway" step. Without them it falls back to ad-hoc signing.
@@ -22,7 +23,7 @@ jobs:
     runs-on: macos-15
     env:
       # Each secret is only handed to the step that needs it.
-      HAS_TAP_TOKEN: ${{ secrets.TAP_TOKEN != '' }}
+      HAS_TAP_KEY: ${{ secrets.TAP_DEPLOY_KEY != '' }}
       HAS_SIGNING: ${{ secrets.DEVELOPER_ID_P12 != '' && secrets.NOTARY_KEY_P8 != '' }}
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262   # v4.4.0
@@ -101,12 +102,18 @@ jobs:
             --title "Noodle $VERSION" --generate-notes --verify-tag
 
       - name: Update Homebrew tap
-        if: env.HAS_TAP_TOKEN == 'true'
+        if: env.HAS_TAP_KEY == 'true'
         env:
-          TAP_TOKEN: ${{ secrets.TAP_TOKEN }}
+          TAP_DEPLOY_KEY: ${{ secrets.TAP_DEPLOY_KEY }}
         run: |
           SHA="$(cut -d' ' -f1 "$RUNNER_TEMP/out/Noodle.zip.sha256")"
-          git clone --depth 1 "https://x-access-token:${TAP_TOKEN}@github.com/pcybriwsky/homebrew-tap.git" "$RUNNER_TEMP/tap"
+          KEY="$RUNNER_TEMP/tap_key"
+          (umask 077; printf '%s\n' "$TAP_DEPLOY_KEY" > "$KEY")
+          trap 'rm -f "$KEY"' EXIT
+          # GitHub's SSH host keys, from its API over HTTPS, so the push can't be pointed elsewhere.
+          curl -fsSL https://api.github.com/meta | jq -r '.ssh_keys[]' | sed 's/^/github.com /' > "$RUNNER_TEMP/known_hosts"
+          export GIT_SSH_COMMAND="ssh -i $KEY -o IdentitiesOnly=yes -o IdentityAgent=none -o UserKnownHostsFile=$RUNNER_TEMP/known_hosts -o StrictHostKeyChecking=yes"
+          git clone --depth 1 git@github.com:pcybriwsky/homebrew-tap.git "$RUNNER_TEMP/tap"
           mkdir -p "$RUNNER_TEMP/tap/Casks"
           sed -e "s/^  version \".*\"/  version \"$VERSION\"/" -e "s/^  sha256 \".*\"/  sha256 \"$SHA\"/" \
             packaging/homebrew/noodle.rb > "$RUNNER_TEMP/tap/Casks/noodle.rb"
