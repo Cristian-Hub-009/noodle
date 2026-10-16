@@ -12,14 +12,29 @@ Works everywhere Claude Code runs hooks: the CLI, the VS Code and Cursor extensi
 ## Install
 
 ```bash
-scripts/install.sh
+curl -fsSL https://raw.githubusercontent.com/pcybriwsky/noodle/main/scripts/get.sh | bash
 ```
 
-It builds `Noodle.app`, copies it to `~/Applications`, and adds two hooks to `~/.claude/settings.json`. You'll see the exact diff and get asked before anything is written, and your old file gets backed up to `settings.json.bak-<timestamp>`. Running it again is safe, it won't add the hooks twice.
+Or with Homebrew:
+
+```bash
+brew install --cask pcybriwsky/tap/noodle
+noodle setup
+```
+
+Either way you get the latest release in `~/Applications` (Homebrew uses `/Applications`), and `noodle setup` adds two hooks to `~/.claude/settings.json`. You'll see the exact diff and get asked before anything is written, and your old file gets backed up to `settings.json.bak-<timestamp>`. Running it again is safe, it won't add the hooks twice.
 
 It also asks whether to open the app at login (you can flip that later in Settings). First launch, your noodle says hi and walks you through a quick desk setup check.
 
-Needs Xcode command line tools (`swift`) and `jq`.
+Needs `jq` (built into macOS 15 and later, `brew install jq` before that). The app is ad-hoc signed, not notarized, so both installers clear the quarantine flag so macOS lets it open.
+
+### From source
+
+```bash
+scripts/install.sh
+```
+
+Builds `Noodle.app` and does the same setup. Needs Xcode command line tools (`swift`) and `jq`.
 
 ## How it works
 
@@ -89,10 +104,28 @@ From a script: `open -g 'claudeposture://film-doorway'` cues any stretch by id, 
 ## Uninstall
 
 ```bash
-scripts/uninstall.sh
+brew uninstall --cask noodle
 ```
 
-Removes the app and takes out only the two hooks it added, leaving the rest of `settings.json` alone. `~/.claude-posture` stays unless you delete it.
+For a curl install, disconnect it and then delete the app:
+
+```bash
+~/Applications/Noodle.app/Contents/Resources/bin/noodle remove && rm -rf ~/Applications/Noodle.app
+```
+
+From source, `scripts/uninstall.sh` does both.
+
+Each one takes out only the two hooks Noodle added, leaving the rest of `settings.json` alone. `~/.claude-posture` stays unless you delete it (or `brew uninstall --zap`). To keep the app but disconnect it from Claude Code, run `noodle remove`.
+
+## Releasing
+
+The tag sets the version, so there's nothing to bump by hand. Tag and push:
+
+```bash
+git tag v0.2.0 && git push origin v0.2.0
+```
+
+[`.github/workflows/release.yml`](.github/workflows/release.yml) builds a universal `Noodle.app`, attaches `Noodle.zip` and its sha256 to a GitHub Release, and, if the `TAP_TOKEN` secret is set, updates `Casks/noodle.rb` in [pcybriwsky/homebrew-tap](https://github.com/pcybriwsky/homebrew-tap) from [`packaging/homebrew/noodle.rb`](packaging/homebrew/noodle.rb).
 
 ## License
 

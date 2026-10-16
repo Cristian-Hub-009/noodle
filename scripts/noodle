@@ -1,0 +1,39 @@
+#!/bin/bash
+# Ships inside Noodle.app (Contents/Resources/bin/noodle). Homebrew links it onto your PATH.
+#   noodle setup [-y]    connect Noodle to Claude Code: add the two hooks, open the app
+#   noodle remove [-y]   disconnect: remove the hooks and the login item, quit the app
+#   noodle version
+set -euo pipefail
+SELF="$(readlink -f "$0")"
+HERE="$(dirname "$SELF")"
+APP="$(cd "$HERE/../../.." && pwd)"
+source "$HERE/_hooks.sh"
+CMD="${1:-}"; [[ $# -gt 0 ]] && shift
+[[ "${1:-}" == "-y" ]] && ASSUME_YES=1
+
+case "$CMD" in
+  setup)
+    "$LSREGISTER" -f "$APP"   # so claudeposture:// resolves to this copy
+    apply_settings_filter "$JQ_MERGE" add
+    open -g "$APP"
+    if ask "Open Noodle at login?"; then
+      sleep 1
+      open -g 'claudeposture://login-on'   # the app registers itself, no Automation prompt needed
+      echo "Added login item. Toggle it anytime under Settings in the menu bar."
+    fi
+    echo "Running. Look for the little figure in your menu bar."
+    ;;
+  remove)
+    open -g 'claudeposture://login-off' 2>/dev/null && sleep 1.5 || true   # the app unregisters its own login item
+    if [[ -f "$SETTINGS" ]]; then apply_settings_filter "$JQ_UNMERGE" remove; fi
+    pkill -x ClaudePosture 2>/dev/null || true
+    echo "Hooks removed. Your config and log are still in ~/.claude-posture."
+    ;;
+  version)
+    /usr/libexec/PlistBuddy -c "Print :CFBundleShortVersionString" "$APP/Contents/Info.plist"
+    ;;
+  *)
+    sed -n '2,6s/^# \{0,1\}//p' "$SELF"
+    [[ -z "$CMD" || "$CMD" == -h || "$CMD" == --help || "$CMD" == help ]] || exit 1
+    ;;
+esac
