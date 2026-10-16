@@ -1,0 +1,341 @@
+<!doctype html>
+<!--
+  The Noodle website. scripts/build-site.sh copies this plus app/Resources/figures into build/site,
+  and .github/workflows/pages.yml publishes that to GitHub Pages on every push to main.
+-->
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="color-scheme" content="light dark">
+<title>Noodle</title>
+<meta name="description" content="Stretching while Claude is noodling. A free Mac app that slides in a quick desk stretch while Claude Code works on a long prompt.">
+<meta property="og:title" content="Noodle">
+<meta property="og:description" content="Stretching while Claude is noodling. A free Mac app for Claude Code.">
+<meta property="og:image" content="icon.png">
+<link rel="icon" href="icon.png">
+<style>
+  :root {
+    --bg: #FFFCF9; --stage: #F8F0E6; --card: #FFFFFF; --fg: #2B2420; --muted: #6B625C; --faint: #9A918A;
+    --accent: #B7552F; --bar: #D97757; --line: rgba(43, 36, 32, 0.09);
+    --btn: #F1EBE6; --btn-hover: #E9E1DB; --primary: #2B2420; --primary-hover: #3D332D; --on-primary: #FFFFFF;
+    --code: #F4EDE6; --spot: rgba(255, 255, 255, 0.95); --floor: rgba(43, 36, 32, 0.16);
+    --shadow: 0 1px 2px rgba(43, 36, 32, .06), 0 8px 24px rgba(43, 36, 32, .07);
+    --pop-ease: cubic-bezier(.34, 1.56, .64, 1);
+  }
+  @media (prefers-color-scheme: dark) {
+    :root:not([data-theme="light"]) {
+      --bg: #1D1917; --stage: #2A2421; --card: #26211E; --fg: #F6F1EE; --muted: #BDB4AE; --faint: #8F8680;
+      --accent: #F0A07F; --bar: #E08A67; --line: rgba(255, 255, 255, 0.08);
+      --btn: #37302D; --btn-hover: #433A36; --primary: #F6F1EE; --primary-hover: #FFFFFF; --on-primary: #221E1C;
+      --code: #2F2926; --spot: rgba(255, 240, 225, 0.14); --floor: rgba(0, 0, 0, 0.35);
+      --shadow: 0 1px 2px rgba(0, 0, 0, .3), 0 8px 24px rgba(0, 0, 0, .25);
+    }
+  }
+  :root[data-theme="dark"] {
+    --bg: #1D1917; --stage: #2A2421; --card: #26211E; --fg: #F6F1EE; --muted: #BDB4AE; --faint: #8F8680;
+    --accent: #F0A07F; --bar: #E08A67; --line: rgba(255, 255, 255, 0.08);
+    --btn: #37302D; --btn-hover: #433A36; --primary: #F6F1EE; --primary-hover: #FFFFFF; --on-primary: #221E1C;
+    --code: #2F2926; --spot: rgba(255, 240, 225, 0.14); --floor: rgba(0, 0, 0, 0.35);
+    --shadow: 0 1px 2px rgba(0, 0, 0, .3), 0 8px 24px rgba(0, 0, 0, .25);
+  }
+
+  * { box-sizing: border-box; }
+  html { -webkit-text-size-adjust: 100%; }
+  body {
+    margin: 0; background: var(--bg); color: var(--fg);
+    font: 16px/1.55 -apple-system, BlinkMacSystemFont, "SF Pro Text", "Helvetica Neue", "Segoe UI", sans-serif;
+    -webkit-font-smoothing: antialiased;
+  }
+  a { color: inherit; }
+  .wrap { max-width: 980px; margin: 0 auto; padding: 0 24px; }
+  section { padding: 72px 0; }
+  h2 { margin: 0 0 8px; font-size: 32px; line-height: 1.15; font-weight: 800; letter-spacing: -0.03em; text-align: center; }
+  .sub { margin: 0 auto 40px; max-width: 560px; text-align: center; color: var(--muted); }
+
+  /* Top bar */
+  nav { display: flex; align-items: center; gap: 10px; padding: 18px 0; }
+  nav img { width: 30px; height: 30px; }
+  nav b { font-size: 17px; letter-spacing: -0.02em; }
+  nav .sp { flex: 1; }
+  nav a { font-size: 14px; font-weight: 600; color: var(--muted); text-decoration: none; padding: 6px 10px; border-radius: 999px; }
+  nav a:hover { color: var(--fg); background: var(--btn); }
+
+  /* Hero */
+  .hero { text-align: center; padding: 48px 0 24px; }
+  .hero .icon { width: 112px; height: 112px; display: block; margin: 0 auto 18px; filter: drop-shadow(0 10px 24px rgba(183, 85, 47, .25)); }
+  h1 { margin: 0; font-size: clamp(52px, 11vw, 84px); line-height: 1; font-weight: 800; letter-spacing: -0.045em; }
+  .tagline { margin: 12px 0 0; font-size: clamp(19px, 3.4vw, 24px); line-height: 1.3; color: var(--accent); font-weight: 650; letter-spacing: -0.01em; }
+  .lede { margin: 18px auto 0; max-width: 540px; font-size: 18px; color: var(--muted); }
+  .cta { margin-top: 30px; display: flex; gap: 10px; justify-content: center; flex-wrap: wrap; }
+  .btn {
+    display: inline-flex; align-items: center; gap: 9px; height: 48px; padding: 0 24px; border-radius: 999px;
+    font-size: 16px; font-weight: 650; text-decoration: none; white-space: nowrap; border: 0; cursor: pointer;
+    background: var(--btn); color: var(--fg); transition: background-color .15s ease, transform .16s var(--pop-ease);
+  }
+  .btn:hover { background: var(--btn-hover); }
+  .btn:active { transform: scale(.96); transition-duration: .07s; }
+  .btn.primary { background: var(--primary); color: var(--on-primary); }
+  .btn.primary:hover { background: var(--primary-hover); }
+  .btn svg { width: 18px; height: 18px; flex: none; }
+  .btn:focus-visible, .copy:focus-visible, nav a:focus-visible { outline: 2px solid var(--bar); outline-offset: 3px; }
+  .meta { margin-top: 14px; font-size: 13.5px; color: var(--faint); }
+
+  /* The cast on its little stage, like the Noodle window */
+  .stage {
+    margin: 44px auto 0; max-width: 760px; border-radius: 28px; background: var(--stage);
+    padding: 18px 10px 20px; display: grid; grid-template-columns: repeat(5, 1fr);
+  }
+  .slot { display: flex; flex-direction: column; align-items: center; min-width: 0; }
+  .pad { position: relative; width: 100%; max-width: 130px; aspect-ratio: 1; display: grid; place-items: center; }
+  .spot { position: absolute; inset: 6% 8% 0; border-radius: 50%; opacity: 0; background: radial-gradient(closest-side, var(--spot), transparent); transition: opacity .3s ease; }
+  .slot:hover .spot { opacity: 1; }
+  .floor { position: absolute; bottom: 7%; width: 50%; height: 7%; border-radius: 50%; background: radial-gradient(closest-side, var(--floor), transparent); }
+  .lift { position: relative; width: 86%; transition: transform .35s var(--pop-ease); }
+  .slot:hover .lift { transform: translateY(-4px); }
+  .lift img { display: block; width: 100%; height: auto; transform-origin: 50% 90%; animation: idle var(--idle, 3.4s) ease-in-out var(--delay, 0s) infinite; }
+  @keyframes idle {
+    0%, 100% { transform: translateY(0) rotate(0deg); }
+    25% { transform: translateY(-2px) rotate(-1.4deg); }
+    50% { transform: translateY(0) rotate(0deg); }
+    75% { transform: translateY(-2px) rotate(1.4deg); }
+  }
+  .name { margin-top: 4px; font-size: 15px; font-weight: 700; line-height: 1.2; transition: color .2s ease; }
+  .slot:hover .name { color: var(--accent); }
+  .title { font-size: 12.5px; color: var(--faint); line-height: 1.3; text-align: center; }
+
+  /* How it works */
+  .steps { display: grid; grid-template-columns: repeat(3, 1fr); gap: 18px; }
+  .step { background: var(--card); border-radius: 22px; padding: 24px; box-shadow: var(--shadow); }
+  .step img { width: 76px; height: 76px; display: block; margin-bottom: 10px; }
+  .step .n { font-size: 12.5px; font-weight: 700; color: var(--accent); letter-spacing: .04em; text-transform: uppercase; }
+  .step h3 { margin: 4px 0 6px; font-size: 19px; line-height: 1.25; letter-spacing: -0.015em; }
+  .step p { margin: 0; color: var(--muted); font-size: 15px; }
+  .points { margin: 28px auto 0; max-width: 760px; display: flex; flex-wrap: wrap; justify-content: center; gap: 8px; }
+  .points span { font-size: 14px; color: var(--muted); background: var(--stage); border-radius: 999px; padding: 6px 14px; }
+
+  /* The moves */
+  .moves { display: grid; grid-template-columns: repeat(4, 1fr); gap: 14px; }
+  .move { background: var(--stage); border-radius: 20px; padding: 14px 10px 16px; text-align: center; }
+  .move img { width: 100%; max-width: 104px; aspect-ratio: 1; display: block; margin: 0 auto 6px; }
+  .move b { display: block; font-size: 15px; line-height: 1.25; }
+  .move small { display: block; margin-top: 2px; font-size: 12.5px; color: var(--faint); }
+
+  /* Install */
+  .install { display: grid; grid-template-columns: 1fr 1fr; gap: 18px; align-items: start; }
+  .panel { background: var(--card); border-radius: 22px; padding: 26px; box-shadow: var(--shadow); min-width: 0; }
+  .panel h3 { margin: 0 0 4px; font-size: 20px; letter-spacing: -0.015em; }
+  .panel > p { margin: 0 0 16px; color: var(--muted); font-size: 15px; }
+  .panel .btn { width: 100%; justify-content: center; margin-bottom: 18px; }
+  ol { margin: 0; padding: 0; list-style: none; counter-reset: s; }
+  ol li { counter-increment: s; position: relative; padding-left: 36px; margin-bottom: 14px; font-size: 15px; color: var(--muted); }
+  ol li:last-child { margin-bottom: 0; }
+  ol li::before {
+    content: counter(s); position: absolute; left: 0; top: 0; width: 24px; height: 24px; border-radius: 50%;
+    background: var(--bar); color: #FFFFFF; font-size: 13px; font-weight: 700; line-height: 24px; text-align: center;
+  }
+  ol li b { color: var(--fg); }
+  .label { margin: 18px 0 6px; font-size: 13px; font-weight: 650; color: var(--fg); }
+  .label:first-of-type { margin-top: 0; }
+  .cmd { display: flex; align-items: stretch; background: var(--code); border-radius: 12px; margin-top: 8px; min-width: 0; }
+  .cmd code {
+    flex: 1; min-width: 0; padding: 11px 0 11px 14px; overflow-x: auto; white-space: nowrap;
+    font: 13px/1.5 ui-monospace, "SF Mono", Menlo, monospace; color: var(--fg);
+  }
+  .copy {
+    flex: none; border: 0; background: none; color: var(--muted); font: 600 13px/1 inherit; padding: 0 14px; cursor: pointer; border-radius: 0 12px 12px 0;
+  }
+  .copy:hover { color: var(--fg); }
+  .copy.done { color: var(--accent); }
+  .note { margin-top: 16px; font-size: 13.5px; color: var(--faint); }
+
+  footer { padding: 36px 0 48px; border-top: 1px solid var(--line); text-align: center; font-size: 14px; color: var(--faint); }
+  footer a { color: var(--muted); }
+
+  @media (max-width: 760px) {
+    section { padding: 52px 0; }
+    .wrap { padding: 0 16px; }
+    .stage { display: flex; flex-wrap: wrap; justify-content: center; row-gap: 8px; border-radius: 22px; }
+    .slot { width: 33.33%; }
+    .steps, .install { grid-template-columns: 1fr; }
+    .moves { grid-template-columns: repeat(2, 1fr); }
+    h2 { font-size: 27px; }
+    .lede { font-size: 17px; }
+  }
+  @media (prefers-reduced-motion: reduce) {
+    .lift img { animation: none; }
+    .lift, .btn { transition: none; }
+  }
+</style>
+</head>
+<body>
+  <div class="wrap">
+    <nav>
+      <img src="icon.png" alt="">
+      <b>Noodle</b>
+      <span class="sp"></span>
+      <a href="#install">Install</a>
+      <a href="https://github.com/pcybriwsky/noodle">GitHub</a>
+    </nav>
+
+    <header class="hero">
+      <img class="icon" src="icon.png" alt="Noodle app icon: Toni the Rigatoni waving">
+      <h1>Noodle</h1>
+      <p class="tagline">Stretching while Claude is noodling.</p>
+      <p class="lede">While Claude Code works on a long prompt, a card slides in from the corner of your screen with a quick desk stretch, and a little noodle shows you how.</p>
+      <div class="cta">
+        <a class="btn primary" href="#install">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 4v11m0 0-4.5-4.5M12 15l4.5-4.5M5 20h14"/></svg>
+          Download for Mac
+        </a>
+        <a class="btn" href="https://github.com/pcybriwsky/noodle">View source</a>
+      </div>
+      <div class="meta"><span class="ver"></span>Free and open source · macOS 13 or later</div>
+
+      <div class="stage" id="stage" aria-label="The cast"></div>
+    </header>
+  </div>
+
+  <section>
+    <div class="wrap">
+      <h2>How it works</h2>
+      <p class="sub">Quick prompts never trigger a card, and it never steals focus from your terminal or editor.</p>
+      <div class="steps">
+        <div class="step">
+          <img src="figures/rigatoni/walk.svg" alt="">
+          <div class="n">Step 1</div>
+          <h3>Send Claude a long prompt</h3>
+          <p>If Claude is still working 15 seconds later, your noodle takes that as a cue.</p>
+        </div>
+        <div class="step">
+          <img src="figures/rigatoni/peek.svg" alt="">
+          <div class="n">Step 2</div>
+          <h3>A card slides in</h3>
+          <p>Like a notification, from the corner of your screen. At most one every 20 minutes.</p>
+        </div>
+        <div class="step">
+          <img src="figures/rigatoni/chin-tuck.svg" alt="">
+          <div class="n">Step 3</div>
+          <h3>Stretch along</h3>
+          <p>Hit Start and your noodle demos the move and times the set. Or ignore it, and it drifts off.</p>
+        </div>
+      </div>
+      <div class="points">
+        <span>Waits while you're on a call</span>
+        <span>Snooze anytime</span>
+        <span>Works in the CLI, VS Code, Cursor and Claude Desktop</span>
+        <span>Respects Reduce motion</span>
+        <span>No account, no network calls</span>
+      </div>
+    </div>
+  </section>
+
+  <section style="padding-top: 0">
+    <div class="wrap">
+      <h2>Eight desk moves</h2>
+      <p class="sub">Pick a focus (tech neck, tight hips, or general stiffness) and Noodle rotates the right ones.</p>
+      <div class="moves" id="moves"></div>
+    </div>
+  </section>
+
+  <section id="install" style="padding-top: 0">
+    <div class="wrap">
+      <h2>Get Noodle</h2>
+      <p class="sub">Two ways in. Either one shows you the exact change to your Claude Code settings and asks before writing it.</p>
+      <div class="install">
+        <div class="panel">
+          <h3>Download the app</h3>
+          <p>A regular Mac download, then one command to hook it up to Claude Code.</p>
+          <a class="btn primary" id="dl" href="https://github.com/pcybriwsky/noodle/releases/latest/download/Noodle.zip">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 4v11m0 0-4.5-4.5M12 15l4.5-4.5M5 20h14"/></svg>
+            Download Noodle.zip
+          </a>
+          <ol>
+            <li><b>Unzip it and drag Noodle into Applications.</b></li>
+            <li><b>Open it.</b> Noodle is free and not notarized by Apple, so macOS blocks it the first time. Go to System Settings › Privacy &amp; Security, scroll down, and click <b>Open Anyway</b>.</li>
+            <li><b>Connect it to Claude Code</b> by running this in Terminal:
+              <div class="cmd"><code>/Applications/Noodle.app/Contents/Resources/bin/noodle setup</code><button class="copy" type="button">Copy</button></div>
+            </li>
+          </ol>
+        </div>
+        <div class="panel">
+          <h3>Install from Terminal</h3>
+          <p>You've already got one open for Claude. This does all three steps in one go.</p>
+          <div class="label">One line</div>
+          <div class="cmd"><code>curl -fsSL https://raw.githubusercontent.com/pcybriwsky/noodle/main/scripts/get.sh | bash</code><button class="copy" type="button">Copy</button></div>
+          <div class="label">Or with Homebrew</div>
+          <div class="cmd"><code>brew install --cask pcybriwsky/tap/noodle &amp;&amp; noodle setup</code><button class="copy" type="button">Copy</button></div>
+          <p class="note">Want to read it first? <a href="https://github.com/pcybriwsky/noodle/blob/main/scripts/get.sh">Here's the script.</a> To uninstall, see the <a href="https://github.com/pcybriwsky/noodle#uninstall">README</a>.</p>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <footer>
+    <div class="wrap">
+      MIT licensed · <a href="https://github.com/pcybriwsky/noodle">Source on GitHub</a> · Not affiliated with Anthropic
+    </div>
+  </footer>
+
+<script>
+  const CAST = [
+    { id: "rigatoni", name: "Toni", title: "the Rigatoni", pace: [3.4, -0.4] },
+    { id: "spaghetti", name: "Sammy", title: "the Spaghetti", pace: [3.0, -1.7] },
+    { id: "penne", name: "Patty", title: "the Penne", pace: [3.8, -2.6] },
+    { id: "lasagna", name: "Lenny", title: "the Lasagna", pace: [4.2, -1.1] },
+    { id: "sprout", name: "Sprout", title: "the Sprout", pace: [3.2, -2.2] },
+  ];
+  const MOVES = [
+    ["chin-tuck", "Chin tucks", "Tech neck"], ["neck-side", "Neck side stretch", "Tech neck"],
+    ["scap", "Scap squeezes", "Upper back"], ["t-ext", "Thoracic extension", "Upper back"],
+    ["doorway", "Doorway stretch", "Chest and shoulders"], ["hip-flexor", "Hip flexor stretch", "Tight hips"],
+    ["calf-raise", "Calf raises", "Legs"], ["walk", "Walkaround", "Everything"],
+  ];
+
+  const stage = document.getElementById("stage");
+  for (const c of CAST) {
+    const el = document.createElement("div");
+    el.className = "slot";
+    el.innerHTML = `<div class="pad"><div class="spot"></div><div class="floor"></div><div class="lift"><img alt="${c.name} ${c.title}" src="figures/${c.id}/idle.svg"></div></div>
+      <div class="name">${c.name}</div><div class="title">${c.title}</div>`;
+    const img = el.querySelector("img");
+    img.style.setProperty("--idle", c.pace[0] + "s");
+    img.style.setProperty("--delay", c.pace[1] + "s");
+    // Hover for a wave, like the Noodle window.
+    new Image().src = `figures/${c.id}/wave.svg`;
+    el.addEventListener("mouseenter", () => { img.src = `figures/${c.id}/wave.svg`; });
+    el.addEventListener("mouseleave", () => { img.src = `figures/${c.id}/idle.svg`; });
+    stage.append(el);
+  }
+
+  // Each move gets a different noodle, so the whole cast shows up.
+  const moves = document.getElementById("moves");
+  MOVES.forEach(([id, name, area], i) => {
+    const who = CAST[i % CAST.length];
+    const el = document.createElement("div");
+    el.className = "move";
+    el.innerHTML = `<img alt="${who.name} doing ${name.toLowerCase()}" src="figures/${who.id}/${id}.svg" loading="lazy"><b>${name}</b><small>${area}</small>`;
+    moves.append(el);
+  });
+
+  for (const btn of document.querySelectorAll(".copy")) {
+    btn.addEventListener("click", async () => {
+      const text = btn.previousElementSibling.textContent;
+      try { await navigator.clipboard.writeText(text); btn.textContent = "Copied"; btn.classList.add("done"); }
+      catch { btn.textContent = "Select it"; }
+      setTimeout(() => { btn.textContent = "Copy"; btn.classList.remove("done"); }, 1600);
+    });
+  }
+
+  // Show the latest version. Before the first release, send the download button to the releases page.
+  fetch("https://api.github.com/repos/pcybriwsky/noodle/releases/latest")
+    .then((r) => (r.ok ? r.json() : Promise.reject(r.status)))
+    .then((rel) => {
+      for (const v of document.querySelectorAll(".ver")) v.textContent = rel.tag_name + " · ";
+    })
+    .catch((status) => {
+      if (status === 404) document.getElementById("dl").href = "https://github.com/pcybriwsky/noodle/releases";
+    });
+</script>
+</body>
+</html>
