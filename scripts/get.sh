@@ -40,7 +40,6 @@ main() {
   if [[ -d "$LEGACY" ]]; then "$LSREGISTER" -u "$LEGACY" 2>/dev/null || true; rm -rf "$LEGACY"; fi
   rm -rf "$APP"
   ditto "$TMP/unzipped/Noodle.app" "$APP"
-  xattr -dr com.apple.quarantine "$APP" 2>/dev/null || true   # ad-hoc signed, not notarized
   echo "Installed $APP ($("$APP/Contents/Resources/bin/noodle" version))"
 
   "$APP/Contents/Resources/bin/noodle" setup "$@"

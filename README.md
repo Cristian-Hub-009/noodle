@@ -11,7 +11,7 @@ Works everywhere Claude Code runs hooks: the CLI, the VS Code and Cursor extensi
 
 ## Install
 
-The easy way, no Terminal: download [Noodle.zip](https://github.com/pcybriwsky/noodle/releases/latest/download/Noodle.zip), unzip it, drag Noodle into Applications, and open it. It's ad-hoc signed, not notarized, so macOS blocks it the first time: go to System Settings › Privacy & Security and click **Open Anyway**. Noodle then opens on a **Connect to Claude Code** step that shows the exact change to `~/.claude/settings.json`. Click Connect and you're set.
+The easy way, no Terminal: download [Noodle.zip](https://github.com/pcybriwsky/noodle/releases/latest/download/Noodle.zip), unzip it, drag Noodle into Applications, and open it. It's signed with a Developer ID and notarized by Apple, so it opens like any other Mac app. Noodle then opens on a **Connect to Claude Code** step that shows the exact change to `~/.claude/settings.json`. Click Connect and you're set.
 
 Or from Terminal:
 
@@ -32,7 +32,7 @@ However you connect, you see the exact diff and get asked before anything is wri
 
 Both ways also offer to open the app at login (you can flip that later in Settings). First launch, your noodle says hi and walks you through a quick desk setup check.
 
-`noodle setup` needs `jq` (built into macOS 15 and later, `brew install jq` before that); the in-app Connect step doesn't. Both Terminal installers clear the quarantine flag so macOS lets the app open without the Open Anyway step.
+`noodle setup` needs `jq` (built into macOS 15 and later, `brew install jq` before that); the in-app Connect step doesn't.
 
 ### From source
 
@@ -136,7 +136,9 @@ The tag sets the version, so there's nothing to bump by hand. Tag and push:
 git tag v0.2.0 && git push origin v0.2.0
 ```
 
-[`.github/workflows/release.yml`](.github/workflows/release.yml) builds a universal `Noodle.app`, attaches `Noodle.zip` and its sha256 to a GitHub Release, and, if the `TAP_TOKEN` secret is set, updates `Casks/noodle.rb` in [pcybriwsky/homebrew-tap](https://github.com/pcybriwsky/homebrew-tap) from [`packaging/homebrew/noodle.rb`](packaging/homebrew/noodle.rb).
+[`.github/workflows/release.yml`](.github/workflows/release.yml) builds a universal `Noodle.app`, signs it with the NGEN ART CO Developer ID (hardened runtime, [`app/Noodle.entitlements`](app/Noodle.entitlements)), has Apple notarize it and staples the ticket, attaches `Noodle.zip` and its sha256 to a GitHub Release, and, if the `TAP_TOKEN` secret is set, updates `Casks/noodle.rb` in [pcybriwsky/homebrew-tap](https://github.com/pcybriwsky/homebrew-tap) from [`packaging/homebrew/noodle.rb`](packaging/homebrew/noodle.rb).
+
+Signing needs five repo secrets, listed at the top of the workflow: the Developer ID certificate as a base64 `.p12` plus its password, and an App Store Connect API key (`.p8`, key ID, issuer ID). Without them a release still goes out, ad-hoc signed. To sign locally, `SIGN_IDENTITY="Developer ID Application: NGEN ART CO (HY8S2WXJ2X)" scripts/build-app.sh`.
 
 ## License
 

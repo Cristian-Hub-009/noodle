@@ -15,12 +15,6 @@ cask "noodle" do
   app "Noodle.app"
   binary "#{appdir}/Noodle.app/Contents/Resources/bin/noodle"
 
-  # Ad-hoc signed, not notarized. Without this, Gatekeeper refuses to open it.
-  postflight do
-    system_command "/usr/bin/xattr",
-                   args: ["-dr", "com.apple.quarantine", "#{appdir}/Noodle.app"]
-  end
-
   uninstall_preflight do
     system_command "#{appdir}/Noodle.app/Contents/Resources/bin/noodle",
                    args: ["remove", "-y"]
