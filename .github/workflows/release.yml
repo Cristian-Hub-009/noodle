@@ -111,13 +111,16 @@ jobs:
         if: env.HAS_TAP_KEY == 'true'
         env:
           TAP_DEPLOY_KEY: ${{ secrets.TAP_DEPLOY_KEY }}
+          GH_TOKEN: ${{ github.token }}   # the meta call below rate-limits shared runner IPs when anonymous
         run: |
+          set -o pipefail
           SHA="$(cut -d' ' -f1 "$RUNNER_TEMP/out/Noodle.zip.sha256")"
           KEY="$RUNNER_TEMP/tap_key"
           (umask 077; printf '%s\n' "$TAP_DEPLOY_KEY" > "$KEY")
           trap 'rm -f "$KEY"' EXIT
           # GitHub's SSH host keys, from its API over HTTPS, so the push can't be pointed elsewhere.
-          curl -fsSL https://api.github.com/meta | jq -r '.ssh_keys[]' | sed 's/^/github.com /' > "$RUNNER_TEMP/known_hosts"
+          gh api meta --jq '.ssh_keys[]' | sed 's/^/github.com /' > "$RUNNER_TEMP/known_hosts"
+          [[ -s "$RUNNER_TEMP/known_hosts" ]] || { echo "::error::Couldn't fetch GitHub's SSH host keys"; exit 1; }
           export GIT_SSH_COMMAND="ssh -i $KEY -o IdentitiesOnly=yes -o IdentityAgent=none -o UserKnownHostsFile=$RUNNER_TEMP/known_hosts -o StrictHostKeyChecking=yes"
           git clone --depth 1 git@github.com:pcybriwsky/homebrew-tap.git "$RUNNER_TEMP/tap"
           mkdir -p "$RUNNER_TEMP/tap/Casks"
