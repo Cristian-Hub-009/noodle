@@ -83,8 +83,14 @@ jobs:
             xcrun notarytool log "$(jq -r .id notary.json)" "${AUTH[@]}" || true
             exit 1
           fi
-          # Staple the ticket so it opens offline too, then re-zip the stapled app.
-          xcrun stapler staple Noodle.app
+          # Staple the ticket so it opens offline too, then re-zip the stapled app. Fetching the
+          # ticket from Apple sometimes drops the connection, so give it a few tries.
+          for i in 1 2 3 4 5; do
+            xcrun stapler staple Noodle.app && break
+            [[ $i == 5 ]] && exit 1
+            echo "Stapling failed, trying again in $((i * 15))s"
+            sleep $((i * 15))
+          done
           spctl --assess --type execute -vv Noodle.app
           rm Noodle.zip notary.json
           ditto -c -k --sequesterRsrc --keepParent Noodle.app Noodle.zip
