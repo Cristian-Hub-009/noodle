@@ -5,7 +5,8 @@ import WebKit
 /// try a stretch. Opens from the menu bar, or when Noodle is opened again. See home.html.
 @MainActor
 final class HomeWindow: NSObject, WKScriptMessageHandler, WKNavigationDelegate, NSWindowDelegate {
-    /// (action, value): "character" with an id, "stretch", or "intro".
+    /// (action, value): "character" with an id, "stretch", "intro", "connect" or "disconnect" (open that sheet),
+    /// "apply" (confirm the sheet, value "login" to also open at login), "sheet-dismissed", or "closed".
     var onAction: ((String, String?) -> Void)?
     /// Opens inside a full-screen app's space instead of switching back to the desktop.
     var floatsOverFullScreen = false
@@ -14,7 +15,7 @@ final class HomeWindow: NSObject, WKScriptMessageHandler, WKNavigationDelegate, 
     private var window: NSWindow?
     private var webView: WKWebView?
     private var ready = false
-    private var queued: String?
+    private var queued: [String] = []
 
     init(resources: URL) {
         self.resources = resources
@@ -41,7 +42,17 @@ final class HomeWindow: NSObject, WKScriptMessageHandler, WKNavigationDelegate, 
     private func push(_ state: [String: Any], animate: Bool) {
         let data = (try? JSONSerialization.data(withJSONObject: state)) ?? Data("{}".utf8)
         let js = "window.home(\(String(decoding: data, as: UTF8.self)), \(animate))"
-        if ready { webView?.evaluateJavaScript(js) } else { queued = js }
+        run(js)
+    }
+
+    /// The Connect / Disconnect sheet over the window: nil closes it. See window.sheet in home.html.
+    func sheet(_ s: [String: Any]?) {
+        let data = s.flatMap { try? JSONSerialization.data(withJSONObject: $0) } ?? Data("null".utf8)
+        run("window.sheet(\(String(decoding: data, as: UTF8.self)))")
+    }
+
+    private func run(_ js: String) {
+        if ready { webView?.evaluateJavaScript(js) } else { queued.append(js) }
     }
 
     private func make() -> NSWindow {
@@ -74,13 +85,14 @@ final class HomeWindow: NSObject, WKScriptMessageHandler, WKNavigationDelegate, 
 
     // Blank the page as it closes, so reopening plays the welcome instead of flashing the old frame.
     func windowWillClose(_ notification: Notification) {
-        webView?.evaluateJavaScript("document.body.classList.remove('shown')")
+        onAction?("closed", nil)
+        webView?.evaluateJavaScript("document.body.classList.remove('shown'); window.sheet(null)")
     }
 
     func webView(_ webView: WKWebView, didFinish navigation: WKNavigation!) {
         ready = true
-        if let js = queued { webView.evaluateJavaScript(js) }
-        queued = nil
+        queued.forEach { webView.evaluateJavaScript($0) }
+        queued = []
     }
 
     func webViewWebContentProcessDidTerminate(_ webView: WKWebView) {
