@@ -6,9 +6,6 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
     private var posture: Posture!
     private var home: HomeWindow!
     private var statusItem: NSStatusItem!
-    private let hooks = ClaudeHooks()
-    private var hooksPlan: ClaudeHooks.Plan?   // what the open sheet previewed, written as-is on confirm
-    private var sheetMode: String?             // "connect", "disconnect", or "done" while the sheet is up
 
     // Set up in willFinishLaunching so the URL that launched us (open -g claudeposture://prompt)
     // is handled rather than dropped.
@@ -26,9 +23,6 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
             case "character": if let id = value { self.update { $0.character = id } }
             case "stretch": self.posture.showNow()
             case "intro": self.posture.showWelcome()
-            case "connect", "disconnect": self.showHooksSheet(connect: action == "connect")
-            case "apply": self.applyHooks(login: value == "login")
-            case "sheet-dismissed", "closed": self.sheetClosed()
             default: break
             }
         }
@@ -45,14 +39,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         statusItem.menu = menu
         refresh()
 
-        // Not hooked up to Claude Code yet (a fresh download): open the Noodle window on the Connect step,
-        // unless you've said "Not now" before. First launch, Toni says hi, after that step if it's showing.
-        // Waits a beat so a launching URL event is handled first.
-        let needsConnect = !hooksConnected && !defaults.bool(forKey: "connectDismissed")
-        if needsConnect || store.state().onboarded != true {
+        // First launch: Toni says hi. Waits a beat so a launching URL event is handled first.
+        if store.state().onboarded != true {
             Task { [weak self] in
                 try? await Task.sleep(nanoseconds: 1_500_000_000)
-                if needsConnect { self?.openConnect() } else { self?.posture.showWelcome() }
+                self?.posture.showWelcome()
             }
         }
 
@@ -112,11 +103,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
 
     private func homeState() -> [String: Any] {
         let c = store.config()
-        let connected = hooksConnected
         var status = ("Watching for long prompts", "on")
-        if !connected {
-            status = ("Not connected to Claude Code", "off")
-        } else if let until = pausedUntil {
+        if let until = pausedUntil {
             let time = DateFormatter()
             time.timeStyle = .short
             time.dateStyle = .none
@@ -130,7 +118,6 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         return [
             "cast": Cast.allCases.map { ["id": $0.rawValue, "name": $0.name, "title": "the \($0.rawValue.capitalized)"] },
             "character": c.character, "doneToday": store.doneToday(), "status": status.0, "statusKind": status.1,
-            "connected": connected,
         ]
     }
 
@@ -138,7 +125,6 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         refresh()
         menu.removeAllItems()
         menu.addItem(item("Open Noodle", #selector(openHome)))
-        if !hooksConnected { menu.addItem(item("Connect to Claude Code…", #selector(openConnect))) }
         menu.addItem(.separator())
         let time = DateFormatter()
         time.timeStyle = .short
@@ -214,92 +200,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
             option("Open at login", checked: LoginItem.isOn) { LoginItem.set(!LoginItem.isOn) },
             .separator(),
         ]
-        items.append(hooksConnected ? item("Disconnect from Claude Code…", #selector(openDisconnect))
-                                    : item("Connect to Claude Code…", #selector(openConnect)))
         items.append(item("Edit config file…", #selector(openConfig)))
         return submenu("Settings", items)
-    }
-
-    // MARK: Claude Code hooks. The same change `noodle setup` / `noodle remove` make, previewed in the Noodle window.
-
-    private var hooksConnected: Bool { (try? hooks.isConnected()) ?? false }
-
-    @objc private func openConnect() {
-        home.show(homeState())
-        showHooksSheet(connect: true)
-    }
-
-    @objc private func openDisconnect() {
-        home.show(homeState())
-        showHooksSheet(connect: false)
-    }
-
-    /// Shows what connecting (or disconnecting) would change in settings.json, and waits for "apply".
-    private func showHooksSheet(connect: Bool, error: String? = nil) {
-        let mode = connect ? "connect" : "disconnect"
-        var s: [String: Any] = ["mode": mode, "path": ClaudeHooks.tilde(hooks.url)]
-        hooksPlan = nil
-        do {
-            let plan = try hooks.plan(connect: connect)
-            guard plan.changed else {
-                return showDone(connect ? "Already connected" : "Not connected",
-                                connect ? "Noodle's hooks are already in your Claude Code settings. Nothing to change."
-                                        : "Noodle's hooks aren't in your Claude Code settings. Nothing to remove.")
-            }
-            hooksPlan = plan
-            s["diff"] = plan.diff()
-            s["creates"] = !FileManager.default.fileExists(atPath: hooks.url.path)
-        } catch {
-            s["error"] = error.localizedDescription
-        }
-        if let error { s["error"] = error }
-        if connect && !LoginItem.isOn { s["login"] = true }
-        if connect && Bundle.main.bundlePath.contains("/AppTranslocation/") {
-            s["note"] = "Noodle is running from your Downloads. Drag it into Applications and open it from there, so Claude Code can find it after a restart."
-        }
-        sheetMode = mode
-        home.sheet(s)
-    }
-
-    private func applyHooks(login: Bool) {
-        guard let plan = hooksPlan, let mode = sheetMode, mode != "done" else { return }
-        let connect = mode == "connect"
-        do {
-            let backup = try hooks.apply(plan)
-            debug("\(mode)ed Claude Code hooks in \(hooks.url.path)\(backup.map { ", backup \($0.lastPathComponent)" } ?? "")")
-            if connect {
-                defaults.removeObject(forKey: "connectDismissed")
-                if login { LoginItem.set(true) }
-            }
-            refresh()
-            showDone(connect ? "Connected to Claude Code" : "Disconnected",
-                     connect ? "Next time Claude works on something for a while, your noodle pops up with a stretch. Claude Code sessions that were already open may need a restart to notice."
-                             : "Noodle won't hear from Claude Code anymore. Connect again anytime from Settings in the menu bar.",
-                     backup: backup)
-            if connect && store.state().onboarded != true { posture.showWelcome() }
-        } catch ClaudeHooks.Failure.changedOnDisk {
-            showHooksSheet(connect: connect, error: ClaudeHooks.Failure.changedOnDisk.localizedDescription)
-        } catch {
-            showHooksSheet(connect: connect, error: "Couldn't write \(ClaudeHooks.tilde(hooks.url)): \(error.localizedDescription)")
-        }
-    }
-
-    private func showDone(_ title: String, _ message: String, backup: URL? = nil) {
-        hooksPlan = nil
-        sheetMode = "done"
-        var s: [String: Any] = ["mode": "done", "title": title, "message": message]
-        if let backup { s["backup"] = backup.lastPathComponent }
-        home.sheet(s)
-    }
-
-    /// "Not now", Done, Esc, or the window closing. Passing on Connect stops it opening at every launch.
-    private func sheetClosed() {
-        if sheetMode == "connect" {
-            defaults.set(true, forKey: "connectDismissed")
-            if store.state().onboarded != true { posture.showWelcome() }
-        }
-        sheetMode = nil
-        hooksPlan = nil
     }
 
     // MARK: Film submenu. Cues shots on a countdown; film cards never touch the count, cooldown, or rotation.
