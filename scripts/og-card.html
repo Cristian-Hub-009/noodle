@@ -1,0 +1,70 @@
+<!doctype html>
+<!--
+  The 1200×630 link-preview card (site/og.png). Render it with scripts/make-og.sh,
+  or open it in a browser at 1200×630 to tweak.
+-->
+<html>
+<head>
+<meta charset="utf-8">
+<style>
+  * { box-sizing: border-box; }
+  html, body { margin: 0; width: 1200px; height: 630px; overflow: hidden; }
+  body {
+    background: radial-gradient(120% 90% at 85% 55%, #F8EADB 0%, #FFFCF9 62%);
+    color: #2B2420; font-family: -apple-system, BlinkMacSystemFont, "SF Pro Display", "Helvetica Neue", sans-serif;
+    -webkit-font-smoothing: antialiased; position: relative;
+  }
+  .copy { position: absolute; left: 84px; top: 0; bottom: 0; width: 560px; display: flex; flex-direction: column; justify-content: center; }
+  .brand { display: flex; align-items: center; gap: 18px; }
+  .brand img { width: 84px; height: 84px; filter: drop-shadow(0 8px 18px rgba(183, 85, 47, .22)); }
+  h1 { margin: 0; font-size: 116px; line-height: 1; font-weight: 800; letter-spacing: -0.05em; }
+  .tagline { margin: 26px 0 0; font-size: 40px; line-height: 1.15; font-weight: 700; letter-spacing: -0.02em; color: #B7552F; }
+  .lede { margin: 18px 0 0; font-size: 26px; line-height: 1.4; color: #6B625C; max-width: 500px; }
+  .url {
+    margin-top: 38px; align-self: flex-start; display: inline-flex; align-items: center; gap: 10px;
+    padding: 12px 22px; border-radius: 999px; background: #2B2420; color: #FFFFFF; font-size: 22px; font-weight: 650;
+  }
+  .url i { width: 10px; height: 10px; border-radius: 50%; background: #D97757; }
+
+  /* The cast on their stage, Toni front and center */
+  .stage {
+    position: absolute; right: 64px; top: 64px; bottom: 64px; width: 470px; border-radius: 40px;
+    background: #F3E6D7; overflow: hidden;
+  }
+  .stage::before {
+    content: ""; position: absolute; left: 50%; bottom: 40px; width: 360px; height: 360px; transform: translateX(-50%);
+    border-radius: 50%; background: radial-gradient(closest-side, rgba(255, 255, 255, .95), rgba(255, 255, 255, 0));
+  }
+  .n { position: absolute; }
+  .n img { display: block; width: 100%; height: auto; }
+  .floor { position: absolute; height: 16px; border-radius: 50%; background: radial-gradient(closest-side, rgba(43, 36, 32, .18), transparent); }
+</style>
+</head>
+<body>
+  <div class="copy">
+    <div class="brand">
+      <img src="../site/icon.png" alt="">
+      <h1>Noodle</h1>
+    </div>
+    <p class="tagline">Stretching while<br>Claude is noodling.</p>
+    <p class="lede">Quick desk stretches that slide in while Claude Code works. Free for Mac.</p>
+    <div class="url"><i></i>tonitherigatoni.com</div>
+  </div>
+
+  <div class="stage">
+    <!-- back row -->
+    <div class="floor" style="left:24px; top:236px; width:110px"></div>
+    <div class="n" style="left:14px; top:96px; width:130px"><img src="../app/Resources/figures/spaghetti/idle.svg"></div>
+    <div class="floor" style="right:24px; top:236px; width:110px"></div>
+    <div class="n" style="right:14px; top:96px; width:130px"><img src="../app/Resources/figures/penne/idle.svg"></div>
+    <!-- front row -->
+    <div class="floor" style="left:6px; bottom:44px; width:130px"></div>
+    <div class="n" style="left:-6px; bottom:52px; width:150px"><img src="../app/Resources/figures/lasagna/idle.svg"></div>
+    <div class="floor" style="right:6px; bottom:44px; width:130px"></div>
+    <div class="n" style="right:-6px; bottom:52px; width:150px"><img src="../app/Resources/figures/sprout/idle.svg"></div>
+    <!-- Toni -->
+    <div class="floor" style="left:155px; bottom:40px; width:160px; height:20px"></div>
+    <div class="n" style="left:95px; bottom:50px; width:280px"><img src="../app/Resources/figures/rigatoni/wave.svg"></div>
+  </div>
+</body>
+</html>
