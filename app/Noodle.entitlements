@@ -1,0 +1,13 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<!--
+  Applied with the hardened runtime when build-app.sh signs with a Developer ID.
+  Calendars: "hold during busy events" reads today's events with EventKit. The mic and camera
+  checks only ask CoreAudio / CoreMediaIO whether a device is running, which needs no entitlement.
+-->
+<plist version="1.0">
+<dict>
+	<key>com.apple.security.personal-information.calendars</key>
+	<true/>
+</dict>
+</plist>

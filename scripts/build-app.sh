@@ -3,6 +3,8 @@
 # Env: CONFIG=debug|release (default release), OUT=<dir> (default app/build)
 #      ARCHS="arm64 x86_64"  universal build (needs full Xcode; default is this Mac's arch)
 #      VERSION=0.2.0         stamps CFBundleShortVersionString in the built bundle
+#      SIGN_IDENTITY="Developer ID Application: …"  signs with the hardened runtime, a secure
+#                            timestamp and app/Noodle.entitlements, ready to notarize (default ad-hoc)
 set -euo pipefail
 
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
@@ -29,5 +31,11 @@ if [[ -n "${VERSION:-}" ]]; then
   /usr/libexec/PlistBuddy -c "Set :CFBundleShortVersionString $VERSION" "$APP/Contents/Info.plist"
 fi
 plutil -lint -s "$APP/Contents/Info.plist"
-codesign --force --sign - --timestamp=none "$APP" >&2
+if [[ -n "${SIGN_IDENTITY:-}" ]]; then
+  codesign --force --options runtime --timestamp --entitlements "$PKG/Noodle.entitlements" \
+    --sign "$SIGN_IDENTITY" "$APP" >&2
+  codesign --verify --strict "$APP" >&2
+else
+  codesign --force --sign - --timestamp=none "$APP" >&2
+fi
 echo "$APP"
