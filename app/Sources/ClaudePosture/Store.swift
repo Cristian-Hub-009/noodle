@@ -41,7 +41,7 @@ struct QuietHours: Codable {
 }
 
 struct Config: Codable {
-    var mode = "claude"                 // claude (cards while Claude works, via the hooks) or timer (one every cooldownMinutes)
+    var mode = "timer"                  // Standalone by default; Claude integration remains opt-in.
     var delaySeconds: Double = 15
     var cooldownMinutes: Double = 20
     var snoozeMinutes: Double = 10

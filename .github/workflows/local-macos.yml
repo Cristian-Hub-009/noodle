@@ -1,0 +1,59 @@
+name: Build local Mac app
+
+on:
+  push:
+    branches: [main, local-macos]
+    paths:
+      - 'app/**'
+      - 'scripts/**'
+      - 'Start-Noodle.command'
+      - '.github/workflows/local-macos.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    runs-on: macos-15
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        with:
+          persist-credentials: false
+
+      - name: Check Claude hook compatibility using temporary files
+        run: bash scripts/test-hooks.sh
+
+      - name: Build for Apple Silicon and Intel
+        env:
+          ARCHS: arm64 x86_64
+          OUT: ${{ runner.temp }}/noodle-local
+        run: bash scripts/build-app.sh
+
+      - name: Verify bundle and package
+        env:
+          OUT: ${{ runner.temp }}/noodle-local
+        run: |
+          APP="$OUT/Noodle.app"
+          lipo -verify_arch arm64 x86_64 "$APP/Contents/MacOS/ClaudePosture"
+          codesign --verify --strict "$APP"
+          plutil -lint "$APP/Contents/Info.plist"
+          test -s "$APP/Contents/Resources/card.html"
+          test -s "$APP/Contents/Resources/home.html"
+          test -s "$APP/Contents/Resources/exercises.json"
+          cp LOCAL-MAC.md "$OUT/READ-ME.md"
+          cd "$OUT"
+          ditto -c -k --sequesterRsrc --keepParent Noodle.app Noodle.zip
+          shasum -a 256 Noodle.zip > Noodle.zip.sha256
+
+      - name: Upload Mac download
+        uses: actions/upload-artifact@v7.0.2
+        with:
+          name: Noodle-Mac
+          path: |
+            ${{ runner.temp }}/noodle-local/Noodle.zip
+            ${{ runner.temp }}/noodle-local/Noodle.zip.sha256
+            ${{ runner.temp }}/noodle-local/READ-ME.md
+          if-no-files-found: error
+          retention-days: 30

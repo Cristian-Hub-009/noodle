@@ -1,5 +1,10 @@
 # Noodle
 
+> **Cristi's local Mac version:** starts on a standalone timer by default.
+> Download a build from **Actions → Build local Mac app**, or double-click
+> `Start-Noodle.command` if Apple Command Line Tools are already installed.
+> See [LOCAL-MAC.md](LOCAL-MAC.md) for Romanian setup instructions.
+
 Stretching while Claude is noodling. **[tonitherigatoni.com](https://tonitherigatoni.com)**
 
 ![Toni the Rigatoni sliding in with a stretch](docs/demo.gif)
@@ -76,7 +81,7 @@ Under the hood it's `~/.claude-posture/config.json` (Settings > Edit config file
 
 | key | default | what it does |
 |---|---|---|
-| `mode` | `claude` | `claude` shows cards while Claude works (needs the hooks), `timer` shows one every `cooldownMinutes` |
+| `mode` | `timer` | `claude` shows cards while Claude works (needs the hooks), `timer` shows one every `cooldownMinutes` |
 | `delaySeconds` | `15` | how long a prompt has to run before a card shows (Claude mode) |
 | `cooldownMinutes` | `20` | minimum gap between cards, or the interval in timer mode |
 | `snoozeMinutes` | `10` | extra wait after Snooze |
